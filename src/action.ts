@@ -5,9 +5,12 @@ import { runPlugin } from "./index";
 import { Env, envSchema, PluginSettings, pluginSettingsSchema, SupportedEvents } from "./types";
 
 export default createActionsPlugin<PluginSettings, Env, null, SupportedEvents>(
-  (context) => {
+  async (context) => {
     context.octokit = new customOctokit({ auth: context.env.USER_PAT });
-    return runPlugin(context);
+    await runPlugin(context);
+    // Ensure the process exits after completing the work
+    // This prevents the GitHub Action from hanging
+    process.exit(0);
   },
   {
     logLevel: (process.env.LOG_LEVEL as LogLevel) || LOG_LEVEL.INFO,

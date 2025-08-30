@@ -148,13 +148,18 @@ async function executeClaudeCommand(prompt: string, logger: { info: (msg: string
       });
 
       // Add timeout to prevent hanging
-      setTimeout(
+      const timeout = setTimeout(
         () => {
           claude.kill("SIGTERM");
-          reject(new Error("Claude CLI execution timed out after 5 minutes"));
+          reject(new Error("Claude CLI execution timed out after 2 minutes"));
         },
-        5 * 60 * 1000
+        2 * 60 * 1000
       );
+
+      // Clear timeout when process completes
+      claude.on("exit", () => {
+        clearTimeout(timeout);
+      });
     });
   } finally {
     // Ensure cleanup even if there's an error
