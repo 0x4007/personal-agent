@@ -1,4 +1,4 @@
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { Context } from "../types";
@@ -12,8 +12,12 @@ export async function claudeAgent(context: Context): Promise<void> {
   const owner = payload.repository.owner.login;
   const body = payload.comment.body;
   const agentOwner = context.env.AGENT_OWNER;
+  
+  // Check if we're in read-only mode (set by GitHub Actions based on invoker)
+  const isReadOnly = process.env.ACCESS_MODE === 'read-only';
+  const accessLevel = isReadOnly ? 'read-only' : 'full';
 
-  logger.info(`Executing claudeAgent:`, { sender, repo, issueNumber, owner, agentOwner });
+  logger.info(`Executing claudeAgent:`, { sender, repo, issueNumber, owner, agentOwner, accessLevel });
 
   if (!body.trim().startsWith(`@${agentOwner}`)) {
     logger.info(`Comment does not start with @${agentOwner}`, { body });
@@ -31,8 +35,21 @@ export async function claudeAgent(context: Context): Promise<void> {
   logger.info(`Processing command with Claude: ${command}`);
 
   try {
-    // Prepare the context for Claude
-    const claudePrompt = `You are a helpful GitHub assistant responding to a command in a GitHub issue comment.
+    // Prepare the context for Claude - keep it simple, access control is handled at infrastructure level
+    const claudePrompt = isReadOnly 
+      ? `You are a helpful GitHub assistant with READ-ONLY access responding to a command in a GitHub issue comment.
+
+You can only read and analyze code, search for information, and provide insights.
+You CANNOT create commits, push branches, open PRs, or modify anything.
+
+Issue Context:
+- Repository: ${owner}/${repo}
+- Issue #${issueNumber}
+- Comment by: ${sender}
+- Command: ${command}
+
+Please provide a helpful response. If asked to perform write operations, explain that you only have read access.`
+      : `You are a helpful GitHub assistant responding to a command in a GitHub issue comment.
 
 Issue Context:
 - Repository: ${owner}/${repo}
@@ -122,6 +139,16 @@ async function executeClaudeCommandInternal(
   logger.info(`Prompt length: ${prompt.length} characters`);
   logger.info(`First 200 chars of prompt: ${prompt.substring(0, 200)}`);
 
+  // Ensure GitHub CLI is authenticated before Claude runs
+  // The appropriate PAT is set by GitHub Actions based on invoker
+  const userPat = process.env.USER_PAT;
+  if (userPat) {
+    logger.info("Configuring GitHub CLI authentication...");
+    await configureGitHubAuth(userPat, logger);
+  } else {
+    logger.info("No USER_PAT found, gh CLI will use default authentication");
+  }
+
   // Create a temporary file for the prompt (similar to Claude Code Action)
   const tmpDir = process.env.RUNNER_TEMP || "/tmp";
   const promptPath = join(tmpDir, `claude-prompt-${Date.now()}.txt`);
@@ -154,6 +181,9 @@ async function executeClaudeCommandInternal(
           ...process.env,
           // Claude CLI will use CLAUDE_CODE_OAUTH_TOKEN from environment
           CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+          // Pass GitHub token for gh CLI authentication
+          GITHUB_TOKEN: process.env.USER_PAT || process.env.GITHUB_TOKEN,
+          GH_TOKEN: process.env.USER_PAT || process.env.GITHUB_TOKEN,
           // Set HOME to ensure Claude can find its config
           HOME: process.env.HOME || "/home/runner",
         },
@@ -192,9 +222,9 @@ async function executeClaudeCommandInternal(
 
       claude.on("close", async (code) => {
         // Clean up streams to prevent hanging
-        claude.stdout?.destroy();
-        claude.stderr?.destroy();
-        claude.stdin?.destroy();
+        if (claude.stdout) claude.stdout.destroy();
+        if (claude.stderr) claude.stderr.destroy();
+        // stdin is set to 'ignore' so there's no stdin stream to destroy
 
         // Clean up the temporary prompt file
         try {
@@ -257,5 +287,28 @@ async function executeClaudeCommandInternal(
     } catch {
       // Ignore cleanup errors on final cleanup
     }
+  }
+}
+
+async function configureGitHubAuth(token: string, logger: { info: (msg: string) => void; verbose: (msg: string) => void }): Promise<void> {
+  try {
+    // GitHub Actions runners have gh CLI pre-installed
+    // Configure gh CLI to use the token
+    // Using echo to pipe the token is the standard way to authenticate gh CLI in CI
+    execSync(`echo "${token}" | gh auth login --with-token`, {
+      stdio: "ignore",
+      env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
+    });
+    
+    // Verify authentication
+    const authStatus = execSync("gh auth status", { 
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
+    });
+    logger.verbose(`GitHub CLI auth status: ${authStatus}`);
+    logger.info("GitHub CLI authenticated successfully with user PAT");
+  } catch (error) {
+    logger.info(`Failed to configure GitHub CLI authentication: ${error instanceof Error ? error.message : String(error)}`);
+    // Don't throw - Claude can still work without gh CLI
   }
 }

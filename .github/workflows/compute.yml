@@ -41,8 +41,41 @@ on:
         default: true
 
 jobs:
-  compute:
-    name: "Personal Agent"
+  # First job: Determine which access level to use
+  determine-access:
+    name: "Determine Access Level"
+    runs-on: ubuntu-latest
+    outputs:
+      access_mode: ${{ steps.check-invoker.outputs.access_mode }}
+      invoker: ${{ steps.check-invoker.outputs.invoker }}
+    steps:
+      - name: Check Invoker
+        id: check-invoker
+        run: |
+          # Parse the event payload to get the invoker
+          PAYLOAD='${{ github.event.inputs.eventPayload }}'
+          INVOKER=$(echo "$PAYLOAD" | jq -r '.comment.user.login // "unknown"')
+          REPO_OWNER="${{ github.repository_owner }}"
+          
+          echo "Invoker: $INVOKER"
+          echo "Repository Owner: $REPO_OWNER"
+          
+          # Determine access mode based on invoker
+          if [ "$INVOKER" = "$REPO_OWNER" ]; then
+            echo "Self-invoked command detected - using FULL ACCESS"
+            echo "access_mode=full" >> $GITHUB_OUTPUT
+          else
+            echo "External invocation detected - using READ-ONLY ACCESS"
+            echo "access_mode=read-only" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "invoker=$INVOKER" >> $GITHUB_OUTPUT
+
+  # Read-only job for external users
+  compute-read-only:
+    name: "Personal Agent (Read-Only)"
+    needs: determine-access
+    if: needs.determine-access.outputs.access_mode == 'read-only'
     runs-on: ubuntu-latest
     permissions: write-all
     environment: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && 'main' || 'development' }}
@@ -51,10 +84,17 @@ jobs:
       KERNEL_PUBLIC_KEY: ${{ secrets.KERNEL_PUBLIC_KEY }}
       LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
       AGENT_OWNER: ${{ github.repository_owner }}
-      USER_PAT: ${{ secrets.USER_PAT }}
+      USER_PAT: ${{ secrets.USER_PAT_READ }}  # READ-ONLY PAT
+      ACCESS_MODE: "read-only"
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Log Access Mode
+        run: |
+          echo "🔒 Running in READ-ONLY mode"
+          echo "Invoker: ${{ needs.determine-access.outputs.invoker }}"
+          echo "Access Mode: ${{ needs.determine-access.outputs.access_mode }}"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -70,7 +110,61 @@ jobs:
           which claude || echo "Claude binary location unknown"
           echo "Claude CLI installed successfully"
 
-      - name: Execute Personal Agent
+      - name: Execute Personal Agent (Read-Only)
+        run: node ./dist/index.js
+        id: plugin-name
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          INPUT_STATEID: ${{ github.event.inputs.stateId }}
+          INPUT_EVENTNAME: ${{ github.event.inputs.eventName }}
+          INPUT_EVENTPAYLOAD: ${{ github.event.inputs.eventPayload }}
+          INPUT_SETTINGS: ${{ github.event.inputs.settings }}
+          INPUT_AUTHTOKEN: ${{ github.event.inputs.authToken }}
+          INPUT_REF: ${{ github.event.inputs.ref }}
+          INPUT_SIGNATURE: ${{ github.event.inputs.signature }}
+          INPUT_COMMAND: ${{ github.event.inputs.command }}
+          NODE_ENV: ${{ github.event.inputs.testMode == 'true' && 'local' || 'production' }}
+
+  # Full access job for self-invoked commands
+  compute-full:
+    name: "Personal Agent (Full Access)"
+    needs: determine-access
+    if: needs.determine-access.outputs.access_mode == 'full'
+    runs-on: ubuntu-latest
+    permissions: write-all
+    environment: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && 'main' || 'development' }}
+    env:
+      PLUGIN_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      KERNEL_PUBLIC_KEY: ${{ secrets.KERNEL_PUBLIC_KEY }}
+      LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
+      AGENT_OWNER: ${{ github.repository_owner }}
+      USER_PAT: ${{ secrets.USER_PAT_FULL }}  # FULL ACCESS PAT
+      ACCESS_MODE: "full"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log Access Mode
+        run: |
+          echo "🔓 Running in FULL ACCESS mode"
+          echo "Invoker: ${{ needs.determine-access.outputs.invoker }}"
+          echo "Access Mode: ${{ needs.determine-access.outputs.access_mode }}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude CLI
+        run: |
+          echo "Installing Claude CLI..."
+          # Install Claude Code CLI via npm
+          npm install -g @anthropic-ai/claude-code
+          # Verify installation
+          which claude || echo "Claude binary location unknown"
+          echo "Claude CLI installed successfully"
+
+      - name: Execute Personal Agent (Full Access)
         run: node ./dist/index.js
         id: plugin-name
         env:
