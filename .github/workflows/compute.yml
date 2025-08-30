@@ -53,8 +53,12 @@ jobs:
         id: check-invoker
         run: |
           # Parse the event payload to get the invoker
-          PAYLOAD='${{ github.event.inputs.eventPayload }}'
-          INVOKER=$(echo "$PAYLOAD" | jq -r '.comment.user.login // "unknown"')
+          # Save payload to file to handle special characters
+          cat > /tmp/payload.json << 'PAYLOAD_EOF'
+          ${{ github.event.inputs.eventPayload }}
+          PAYLOAD_EOF
+          
+          INVOKER=$(jq -r '.comment.user.login // "unknown"' /tmp/payload.json)
           REPO_OWNER="${{ github.repository_owner }}"
           
           echo "Invoker: $INVOKER"
