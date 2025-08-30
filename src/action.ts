@@ -7,10 +7,30 @@ import { Env, envSchema, PluginSettings, pluginSettingsSchema, SupportedEvents }
 export default createActionsPlugin<PluginSettings, Env, null, SupportedEvents>(
   async (context) => {
     context.octokit = new customOctokit({ auth: context.env.USER_PAT });
-    await runPlugin(context);
-    // Ensure the process exits after completing the work
-    // This prevents the GitHub Action from hanging
-    process.exit(0);
+
+    try {
+      const result = await runPlugin(context);
+
+      // Allow event loop to drain naturally
+      // If something is keeping the process alive, we want to know about it
+      // in development, but in CI we need to ensure termination
+      if (process.env.CI) {
+        // Use setImmediate to schedule exit after current I/O events complete
+        setImmediate(() => {
+          process.exit(0);
+        });
+      }
+
+      return result;
+    } catch (error) {
+      // Ensure we exit on error too
+      if (process.env.CI) {
+        setImmediate(() => {
+          process.exit(1);
+        });
+      }
+      throw error;
+    }
   },
   {
     logLevel: (process.env.LOG_LEVEL as LogLevel) || LOG_LEVEL.INFO,

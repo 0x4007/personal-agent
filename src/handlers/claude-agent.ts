@@ -99,6 +99,7 @@ async function executeClaudeCommand(prompt: string, logger: { info: (msg: string
           HOME: process.env.HOME || "/home/runner",
         },
         stdio: ["ignore", "pipe", "pipe"], // Ignore stdin, pipe stdout and stderr
+        detached: false, // Ensure child process is tied to parent
       });
 
       let output = "";
@@ -120,6 +121,11 @@ async function executeClaudeCommand(prompt: string, logger: { info: (msg: string
       });
 
       claude.on("close", async (code) => {
+        // Clean up streams to prevent hanging
+        claude.stdout?.destroy();
+        claude.stderr?.destroy();
+        claude.stdin?.destroy();
+
         // Clean up the temporary prompt file
         try {
           await unlink(promptPath);
@@ -147,19 +153,8 @@ async function executeClaudeCommand(prompt: string, logger: { info: (msg: string
         reject(new Error(`Failed to spawn Claude CLI: ${err.message}`));
       });
 
-      // Add timeout to prevent hanging
-      const timeout = setTimeout(
-        () => {
-          claude.kill("SIGTERM");
-          reject(new Error("Claude CLI execution timed out after 2 minutes"));
-        },
-        2 * 60 * 1000
-      );
-
-      // Clear timeout when process completes
-      claude.on("exit", () => {
-        clearTimeout(timeout);
-      });
+      // Don't use a hard timeout - let Claude run as long as needed
+      // The process will terminate naturally when Claude completes
     });
   } finally {
     // Ensure cleanup even if there's an error
