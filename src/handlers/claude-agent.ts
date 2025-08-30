@@ -82,9 +82,43 @@ Provide a brief but helpful response.`;
 
 async function executeClaudeCommand(
   prompt: string,
+  logger: { info: (msg: string) => void; verbose: (msg: string) => void; warn?: (msg: string) => void },
+  maxRetries = 3
+): Promise<string> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      logger.info(`Executing Claude CLI command (attempt ${attempt}/${maxRetries})...`);
+      return await executeClaudeCommandInternal(prompt, logger);
+    } catch (error) {
+      lastError = error as Error;
+      const errorMessage = lastError.message || String(error);
+
+      // Check if it's a 5xx error that should be retried
+      const is5xxError = /API Error: 5\d{2}/.test(errorMessage) || /Internal server error/.test(errorMessage);
+
+      if (is5xxError && attempt < maxRetries) {
+        // Exponential backoff: 2^attempt seconds (2s, 4s, 8s)
+        const delayMs = Math.pow(2, attempt) * 1000;
+        logger.info(`Received 5xx error, retrying in ${delayMs / 1000} seconds...`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+
+      // If not a 5xx error or we've exhausted retries, throw the error
+      throw lastError;
+    }
+  }
+
+  throw lastError || new Error("Failed to execute Claude command after retries");
+}
+
+async function executeClaudeCommandInternal(
+  prompt: string,
   logger: { info: (msg: string) => void; verbose: (msg: string) => void; warn?: (msg: string) => void }
 ): Promise<string> {
-  logger.info("Executing Claude CLI command...");
+  logger.verbose("Executing Claude CLI command internal...");
   logger.info(`Prompt length: ${prompt.length} characters`);
   logger.info(`First 200 chars of prompt: ${prompt.substring(0, 200)}`);
 
