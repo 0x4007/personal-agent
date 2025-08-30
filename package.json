@@ -11,6 +11,8 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
+    "build:action": "bun build-action.js",
+    "build:bundle": "bun build-action.js",
     "format": "run-p format:*",
     "check-formatting": "run-p check-formatting:* format:cspell",
     "check-formatting:lint": "eslint --fix-dry-run",
@@ -36,6 +38,7 @@
     "@ubiquity-os/plugin-sdk": "^3.1.4",
     "@ubiquity-os/ubiquity-os-logger": "^1.4.0",
     "dotenv": "16.4.7",
+    "esbuild": "^0.25.9",
     "hono": "^4.6.19",
     "ts-node": "^10.9.2"
   },
@@ -50,6 +53,7 @@
     "@mswjs/data": "0.16.2",
     "@types/jest": "^29.5.14",
     "@types/node": "22.12.0",
+    "@vercel/ncc": "^0.38.3",
     "cross-env": "^7.0.3",
     "cspell": "8.17.3",
     "eslint": "9.19.0",

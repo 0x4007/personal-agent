@@ -1,4 +1,4 @@
-import { helloWorld } from "./handlers/hello-world";
+import { claudeAgent } from "./handlers/claude-agent";
 import { Context } from "./types";
 import { isIssueCommentEvent } from "./types/typeguards";
 
@@ -9,7 +9,7 @@ export async function runPlugin(context: Context) {
   const { logger, eventName } = context;
 
   if (isIssueCommentEvent(context)) {
-    return await helloWorld(context);
+    return await claudeAgent(context);
   }
 
   logger.error(`Unsupported event: ${eventName}`);

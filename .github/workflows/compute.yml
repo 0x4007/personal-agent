@@ -5,21 +5,40 @@ on:
     inputs:
       stateId:
         description: "State Id"
+        # required: false
+        # default: "test-state-001"
       eventName:
         description: "Event Name"
+        # required: false
+        # default: "issue_comment.created"
       eventPayload:
-        description: "Event Payload"
+        description: "Event Payload (JSON string)"
+        # required: true
+        # default: '{"action":"created","issue":{"number":1,"title":"Test Issue"},"comment":{"id":1,"body":"@0x4007 Hello Claude! Can you explain what this personal agent does?","user":{"login":"test-user"}},"repository":{"name":"personal-agent","owner":{"login":"0x4007"}}}'
       settings:
         description: "Settings"
+        # required: false
+        # default: '{}'
       authToken:
         description: "Auth Token"
+        # required: false
+        # default: "test-auth-token"
       ref:
         description: "Ref"
+        # required: false
+        # default: "refs/heads/claude-integration"
       signature:
         description: "The kernel signature"
+        # required: false
+        # default: "test-signature"
       command:
         description: "Command from the Kernel"
         required: false
+        # default: "{}"
+      testMode:
+        description: "Enable test mode (bypass signature verification)"
+        type: boolean
+        default: true
 
 jobs:
   compute:
@@ -37,10 +56,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version: '20'
 
-      - name: execute directive
-        run: bun ./dist/index.js
+      - name: Install Claude CLI
+        run: |
+          echo "Installing Claude CLI..."
+          # Install Claude Code CLI via npm
+          npm install -g @anthropic-ai/claude-code
+          # Verify installation
+          which claude || echo "Claude binary location unknown"
+          echo "Claude CLI installed successfully"
+
+      - name: Execute Personal Agent
+        run: node ./dist/index.js
         id: plugin-name
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          INPUT_STATEID: ${{ github.event.inputs.stateId }}
+          INPUT_EVENTNAME: ${{ github.event.inputs.eventName }}
+          INPUT_EVENTPAYLOAD: ${{ github.event.inputs.eventPayload }}
+          INPUT_SETTINGS: ${{ github.event.inputs.settings }}
+          INPUT_AUTHTOKEN: ${{ github.event.inputs.authToken }}
+          INPUT_REF: ${{ github.event.inputs.ref }}
+          INPUT_SIGNATURE: ${{ github.event.inputs.signature }}
+          INPUT_COMMAND: ${{ github.event.inputs.command }}
+          NODE_ENV: ${{ github.event.inputs.testMode == 'true' && 'local' || 'production' }}

@@ -21914,7 +21914,7 @@ function __nccwpck_require__(e) {
 if (typeof __nccwpck_require__ !== "undefined")
   __nccwpck_require__.ab = new URL(".", import.meta.url).pathname.slice(import.meta.url.match(/^file:\/\/\/\w:/) ? 1 : 0, -1) + "/";
 var s = {};
-__nccwpck_require__.d(s, { A: () => Pt });
+__nccwpck_require__.d(s, { A: () => Ht });
 var o = {};
 __nccwpck_require__.r(o);
 __nccwpck_require__.d(o, {
@@ -32058,7 +32058,10 @@ var Ut = {
   },
 };
 var Nt = Octokit.plugin(throttling, retry, paginateRest, restEndpointMethods, paginateGraphQL).defaults((e) => ({ ...Ut, ...e }));
-async function helloWorld(e) {
+var Gt = __nccwpck_require__(5317);
+const Ot = e(import.meta.url)("fs/promises");
+var Lt = __nccwpck_require__(6928);
+async function claudeAgent(e) {
   const { logger: t, payload: r } = e;
   const s = r.comment.user?.login;
   const o = r.repository.name;
@@ -32066,14 +32069,91 @@ async function helloWorld(e) {
   const n = r.repository.owner.login;
   const i = r.comment.body;
   const a = e.env.AGENT_OWNER;
-  t.info(`Executing helloWorld:`, { sender: s, repo: o, issueNumber: A, owner: n, agentOwner: a });
+  t.info(`Executing claudeAgent:`, { sender: s, repo: o, issueNumber: A, owner: n, agentOwner: a });
   if (!i.trim().startsWith(`@${a}`)) {
     t.info(`Comment does not start with @${a}`, { body: i });
     return;
   }
-  await e.commentHandler.postComment(e, t.ok("Hello, world!"));
-  t.ok(`Successfully created comment!`);
-  t.verbose(`Exiting helloWorld`);
+  const c = i.trim().substring(`@${a}`.length).trim();
+  if (!c) {
+    await e.commentHandler.postComment(e, t.error("No command provided after username mention"));
+    return;
+  }
+  t.info(`Processing command with Claude: ${c}`);
+  try {
+    const r = `You are a helpful GitHub assistant responding to a command in a GitHub issue comment.\n\nIssue Context:\n- Repository: ${n}/${o}\n- Issue #${A}\n- Comment by: ${s}\n- Command: ${c}\n\nPlease provide a helpful and concise response to this command. Be friendly and professional.`;
+    const i = await executeClaudeCommand(r, t);
+    await e.commentHandler.postComment(e, t.ok(i));
+    t.ok(`Successfully posted Claude response!`);
+  } catch (r) {
+    t.error(`Failed to execute Claude command: ${r}`);
+    await e.commentHandler.postComment(e, t.error(`Failed to process command with Claude: ${r instanceof Error ? r.message : String(r)}`));
+  }
+  t.verbose(`Exiting claudeAgent`);
+}
+async function executeClaudeCommand(e, t) {
+  t.info("Executing Claude CLI command...");
+  const r = process.env.RUNNER_TEMP || "/tmp";
+  const s = (0, Lt.join)(r, `claude-prompt-${Date.now()}.txt`);
+  try {
+    await (0, Ot.writeFile)(s, e, "utf8");
+    t.verbose(`Wrote prompt to: ${s}`);
+    return await new Promise((e, r) => {
+      const o = ["--dangerously-skip-permissions", "-p", s, "--verbose", "--output-format", "text"];
+      t.verbose(`Executing: claude ${o.join(" ")}`);
+      const A = process.env.CI ? "claude" : `${process.env.HOME || "/home/runner"}/.local/bin/claude`;
+      const n = (0, Gt.spawn)(A, o, {
+        env: { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN, HOME: process.env.HOME || "/home/runner" },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let i = "";
+      let a = "";
+      let c = false;
+      n.stdout.on("data", (e) => {
+        const r = e.toString();
+        i += r;
+        c = true;
+        t.verbose(`Claude stdout chunk: ${r.substring(0, 100)}...`);
+      });
+      n.stderr.on("data", (e) => {
+        const r = e.toString();
+        a += r;
+        t.verbose(`Claude stderr: ${r}`);
+      });
+      n.on("close", async (o) => {
+        try {
+          await (0, Ot.unlink)(s);
+        } catch (e) {
+          t.verbose(`Failed to delete prompt file: ${e}`);
+        }
+        if (o !== 0) {
+          r(new Error(`Claude CLI exited with code ${o}\nError output: ${a}\nStandard output: ${i}`));
+        } else if (!c) {
+          r(new Error(`Claude CLI produced no output. Error: ${a}`));
+        } else {
+          const t = i
+            .replace(/\x1b\[[0-9;]*m/g, "")
+            .replace(/^\s*Claude\s+Code\s+v[\d.]+\s*/gm, "")
+            .trim();
+          e(t || "Claude generated an empty response.");
+        }
+      });
+      n.on("error", (e) => {
+        r(new Error(`Failed to spawn Claude CLI: ${e.message}`));
+      });
+      setTimeout(
+        () => {
+          n.kill("SIGTERM");
+          r(new Error("Claude CLI execution timed out after 5 minutes"));
+        },
+        5 * 60 * 1e3
+      );
+    });
+  } finally {
+    try {
+      await (0, Ot.unlink)(s);
+    } catch {}
+  }
 }
 function isIssueCommentEvent(e) {
   return e.eventName === "issue_comment.created";
@@ -32081,32 +32161,32 @@ function isIssueCommentEvent(e) {
 async function runPlugin(e) {
   const { logger: t, eventName: r } = e;
   if (isIssueCommentEvent(e)) {
-    return await helloWorld(e);
+    return await claudeAgent(e);
   }
   t.error(`Unsupported event: ${r}`);
 }
-var Gt = __nccwpck_require__(2874);
-const Ot = ct.Object({
+var Pt = __nccwpck_require__(2874);
+const Mt = ct.Object({
   LOG_LEVEL: ct.Optional(ct.Enum(n, { default: n.INFO })),
   KERNEL_PUBLIC_KEY: ct.Optional(ct.String()),
   AGENT_OWNER: ct.String(),
   USER_PAT: ct.String(),
 });
-const Lt = ct.Object({}, { default: {} });
-const Pt = createActionsPlugin(
+const xt = ct.Object({}, { default: {} });
+const Ht = createActionsPlugin(
   (e) => {
     e.octokit = new Nt({ auth: e.env.USER_PAT });
     return runPlugin(e);
   },
   {
     logLevel: process.env.LOG_LEVEL || n.INFO,
-    settingsSchema: Lt,
-    envSchema: Ot,
+    settingsSchema: xt,
+    envSchema: Mt,
     ...(process.env.KERNEL_PUBLIC_KEY && { kernelPublicKey: process.env.KERNEL_PUBLIC_KEY }),
     postCommentOnError: true,
     bypassSignatureVerification: process.env.NODE_ENV === "local",
   }
 );
-var Mt = s.A;
-export { Mt as default };
+var Vt = s.A;
+export { Vt as default };
 //# sourceMappingURL=index.js.map

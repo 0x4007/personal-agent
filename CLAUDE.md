@@ -42,6 +42,7 @@ bun run worker  # Starts Wrangler dev server on port 4000
 
 ### Environment Variables
 - `USER_PAT` - GitHub Personal Access Token (stored in GitHub Actions secrets)
+- `CLAUDE_CODE_OAUTH_TOKEN` - Claude authentication token for CLI integration
 
 ### Important Considerations
 - **Security**: Never expose PAT in logs or responses
@@ -50,7 +51,16 @@ bun run worker  # Starts Wrangler dev server on port 4000
 - **Error Handling**: Always provide clear error messages to users
 
 ### Current Features
-- `@username say hello` - Basic greeting response
+- `@username [command]` - Processes commands using Claude CLI for intelligent responses
+- Workflow dispatch testing with default payloads
+- Bundled action with @vercel/ncc for fast cold starts
+
+### Implementation Status
+- ✅ Claude CLI integration in `src/handlers/claude-agent.ts`
+- ✅ GitHub Actions workflow with manual trigger for testing
+- ✅ Bundle action with ncc for direct execution (no npm install)
+- ⚠️ **Issue**: Action not processing events correctly (exits after reassembly check)
+- ⚠️ **Root Cause**: `dist/index.js` contains wrong entry point (reassembly script instead of bundled action)
 
 ### Planned Features (from specification)
 - Comment rewrites for typo fixes
@@ -69,8 +79,15 @@ bun run worker  # Starts Wrangler dev server on port 4000
 ### Deployment
 1. Fork repository under personal account (keep name as `personal-agent`)
 2. Add `USER_PAT` to GitHub Actions secrets
-3. Install UbiquityOS app on the fork
-4. Plugin auto-deploys via GitHub Actions to Cloudflare Workers
+3. Add `CLAUDE_CODE_OAUTH_TOKEN` to GitHub Actions secrets
+4. Install UbiquityOS app on the fork
+5. Plugin auto-deploys via GitHub Actions to Cloudflare Workers
+
+### GitHub Actions Execution
+- **Entry Point**: `dist/index.js` (should be bundled action, not reassembly script)
+- **Build Command**: `bun build-action.js` (uses @vercel/ncc to bundle)
+- **Workflow**: `.github/workflows/compute.yml` 
+- **Test Mode**: Set `testMode=true` for manual workflow dispatch
 
 ### Bridge Communication
 The Personal Agent Bridge handles:
