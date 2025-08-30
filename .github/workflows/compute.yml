@@ -5,36 +5,36 @@ on:
     inputs:
       stateId:
         description: "State Id"
-        required: false
-        default: "test-state-001"
+        # required: false
+        # default: "test-state-001"
       eventName:
         description: "Event Name"
-        required: false
-        default: "issue_comment.created"
+        # required: false
+        # default: "issue_comment.created"
       eventPayload:
         description: "Event Payload (JSON string)"
-        required: false
-        default: '{"action":"created","issue":{"number":1,"title":"Test Issue"},"comment":{"id":1,"body":"@0x4007 Hello Claude! Can you explain what this personal agent does?","user":{"login":"test-user"}},"repository":{"name":"personal-agent","owner":{"login":"0x4007"}}}'
+        # required: true
+        # default: '{"action":"created","issue":{"number":1,"title":"Test Issue"},"comment":{"id":1,"body":"@0x4007 Hello Claude! Can you explain what this personal agent does?","user":{"login":"test-user"}},"repository":{"name":"personal-agent","owner":{"login":"0x4007"}}}'
       settings:
         description: "Settings"
-        required: false
-        default: '{}'
+        # required: false
+        # default: '{}'
       authToken:
         description: "Auth Token"
-        required: false
-        default: "test-auth-token"
+        # required: false
+        # default: "test-auth-token"
       ref:
         description: "Ref"
-        required: false
-        default: "refs/heads/claude-integration"
+        # required: false
+        # default: "refs/heads/claude-integration"
       signature:
         description: "The kernel signature"
-        required: false
-        default: "test-signature"
+        # required: false
+        # default: "test-signature"
       command:
         description: "Command from the Kernel"
         required: false
-        default: "{}"
+        # default: "{}"
       testMode:
         description: "Enable test mode (bypass signature verification)"
         type: boolean
