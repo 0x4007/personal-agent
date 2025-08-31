@@ -127,7 +127,8 @@ jobs:
       KERNEL_PUBLIC_KEY: ${{ secrets.KERNEL_PUBLIC_KEY }}
       LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
       AGENT_OWNER: ${{ github.repository_owner }}
-      USER_PAT: ${{ secrets.USER_PAT_READ }}  # READ-ONLY PAT
+      GITHUB_PAT: ${{ secrets.GITHUB_PAT_READ }}  # READ-ONLY PAT
+      USER_PAT: ${{ secrets.USER_PAT_READ }}  # Backwards compatibility
       ACCESS_MODE: "read-only"
 
     steps:
@@ -181,7 +182,8 @@ jobs:
       KERNEL_PUBLIC_KEY: ${{ secrets.KERNEL_PUBLIC_KEY }}
       LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
       AGENT_OWNER: ${{ github.repository_owner }}
-      USER_PAT: ${{ secrets.USER_PAT_FULL }}  # FULL ACCESS PAT
+      GITHUB_PAT: ${{ secrets.GITHUB_PAT_FULL }}  # FULL ACCESS PAT
+      USER_PAT: ${{ secrets.USER_PAT_FULL }}  # Backwards compatibility
       ACCESS_MODE: "full"
 
     steps:
