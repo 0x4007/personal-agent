@@ -23,6 +23,15 @@
     "knip": "knip --config .github/knip.ts",
     "knip-ci": "knip --no-exit-code --reporter json --config .github/knip.ts",
     "test": "cross-env NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" jest --setupFiles dotenv/config --coverage",
+    "test:unit": "jest tests/*.test.ts --coverage",
+    "test:integration": "jest tests/claude-integration.test.ts",
+    "test:security": "jest tests/security.test.ts",
+    "test:e2e": "jest tests/e2e/*.e2e.test.ts",
+    "test:e2e:github": "jest tests/e2e/github.e2e.test.ts",
+    "test:e2e:telegram": "jest tests/e2e/telegram.e2e.test.ts",
+    "test:performance": "jest tests/performance.test.ts --maxWorkers=1",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage --coverageDirectory=coverage",
     "worker": "wrangler dev --env dev --port 4000"
   },
   "keywords": [
