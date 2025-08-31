@@ -1,17 +1,27 @@
-# Personal Agent - UbiquityOS Plugin
+# Personal Agent - Universal Automation Platform
 
-## Project Overview
-This is a Personal Agent plugin for UbiquityOS that enables users to create self-hosted automation agents. The agent listens for username mentions in GitHub issue comments and executes custom actions using the user's Personal Access Token (PAT).
+## Project Vision
+A generalized personal agent that acts as a digital assistant with full access to command-line tools and platform APIs. The agent operates with the user's credentials across multiple platforms, providing a unified automation interface through natural language commands.
+
+## Core Concept
+The Personal Agent is designed to be a universal automation system where:
+- Users provide their access keys and credentials for various platforms
+- The agent has full shell access to execute any command-line tool
+- It can authenticate and act on behalf of the user across any platform
+- Initial deployment uses GitHub Actions as the execution environment
+- UbiquityOS handles event capture and routing from multiple platforms
 
 ## Architecture Overview
 
-This project is a generalized agent that can be triggered by GitHub events. The agent executes Claude CLI to process commands and respond to events.
+This project leverages the Claude Code Action as its foundation, extending it to become a multi-platform automation agent.
 
-- **Plugin Type**: UbiquityOS plugin (Cloudflare Worker)
-- **Event Handler**: `issue_comment.created` (and future GitHub events)
-- **Bridge**: Communicates via Personal Agent Bridge plugin
-- **SDK**: Uses `@ubiquity-os/plugin-sdk` for GitHub interactions
-- **AI Integration**: Claude CLI for intelligent command processing
+### Key Components
+- **Execution Environment**: GitHub Actions (provides compute and shell access)
+- **AI Core**: Claude Code Action (submodule integration)
+- **Event Router**: UbiquityOS (captures events from multiple platforms)
+- **Invocation**: Username mentions trigger agent activation
+- **Platform Support**: GitHub (initial), Telegram, Discord, Slack (planned)
+- **MCP Integration**: Model Context Protocol for platform-specific capabilities
 
 ## Key Design Decisions
 
@@ -38,36 +48,53 @@ This project is a generalized agent that can be triggered by GitHub events. The 
 
 ### Event Context Structure
 
-The agent uses a generalized `EventContext` interface that can adapt to any GitHub event:
+The agent uses a generalized `EventContext` interface that can adapt to events from any platform:
 
 ```typescript
 interface EventContext {
-  eventType: string;              // e.g., "issue_comment", "push", "pull_request"
-  repository: string;              // e.g., "owner/repo"
+  platform: string;                // e.g., "github", "telegram", "discord"
+  eventType: string;              // e.g., "issue_comment", "message", "command"
+  source?: string;                // e.g., "owner/repo", "chat_id", "channel_id"
+  repository?: string;            // GitHub-specific: "owner/repo"
   issueNumber?: string;
   pullRequestNumber?: string;
   author: string;
   command: string;
-  [key: string]: string | number | undefined;  // Extensible for any event data
+  metadata?: {                     // Platform-specific metadata
+    chatId?: string;              // Telegram
+    messageId?: string;           // Various platforms
+    channelId?: string;           // Discord/Slack
+    [key: string]: any;
+  };
+  [key: string]: string | number | object | undefined;  // Extensible for any event data
 }
 ```
 
+This structure is critical for informing Claude about:
+- Which platform the event originated from
+- What MCP tools might be relevant (e.g., Telegram MCP for Telegram events)
+- How to format and deliver responses appropriately
+
 ### Prompt Generation
 
-The prompt builder is event-agnostic and dynamically formats context based on the provided event data. It:
-- Adapts to any GitHub event type
+The prompt builder is platform-agnostic and dynamically formats context based on the provided event data. It:
+- Adapts to events from any platform (GitHub, Telegram, Discord, etc.)
+- Includes full EventContext to inform Claude about the event source
 - Clearly communicates access level (read-only vs full)
-- Provides relevant context without hardcoding GitHub-specific language
-- Maintains flexibility for future event types
-- Does NOT prescribe specific GitHub operations - Claude determines appropriate actions
+- Provides platform-specific context to guide MCP tool selection
+- Maintains flexibility for future platforms and event types
+- Does NOT prescribe specific operations - Claude determines appropriate actions based on context
 
 ## Key Concepts
 
-1. **Personal Automation**: Each user forks and hosts their own agent instance
-2. **Username Tags**: Agent activates when `@username` appears at the beginning of issue comments
-3. **PAT Authentication**: Uses user's GitHub PAT for authenticated actions
-4. **Decentralized**: Each user controls their own agent's behavior and permissions
-5. **Generalized Design**: Intentionally avoids GitHub-specific logic where possible
+1. **Universal Agent**: Single agent that can operate across all platforms with user's credentials
+2. **Personal Automation**: Each user forks and hosts their own agent instance
+3. **Username Mentions**: Agent activates when `@username` appears in any supported platform
+4. **Multi-Platform Authentication**: Stores credentials for various platforms (GitHub PAT, Telegram Bot Token, etc.)
+5. **Decentralized**: Each user controls their own agent's behavior and permissions
+6. **Platform-Agnostic Design**: Core logic remains independent of specific platforms
+7. **MCP Extensibility**: New platforms added via Model Context Protocol servers
+8. **Full Shell Access**: Agent can execute any CLI tool available in the environment
 
 ## Development Guidelines
 
@@ -94,24 +121,33 @@ bun run worker  # Starts Wrangler dev server on port 4000
 - `CLAUDE_CODE_OAUTH_TOKEN` - Claude authentication token for CLI integration
 - `ACCESS_MODE` - Set to "read-only" for limited access mode
 - `AGENT_OWNER` - Username that triggers the agent
+- `TELEGRAM_BOT_TOKEN` - Telegram Bot API token (future)
+- `DISCORD_BOT_TOKEN` - Discord Bot token (future)
+- `SLACK_APP_TOKEN` - Slack App token (future)
+- Platform-specific credentials as needed
 
 ### Important Implementation Notes
 
-1. **The agent is intentionally generalized** - avoid adding GitHub-specific logic unless absolutely necessary
-2. **Git configuration and GitHub CLI authentication** remain essential for repository operations
-3. **The prompt should provide context** about the triggering event without being overly prescriptive
-4. **All security-critical features must be preserved**:
+1. **The agent is platform-agnostic** - core logic should work regardless of event source
+2. **EventContext is mandatory** - always pass full context to Claude for informed decisions
+3. **Platform detection drives tool selection** - Claude uses EventContext to determine relevant MCPs
+4. **Authentication is platform-specific** - each platform requires its own credential management
+5. **The prompt should provide context** about the triggering event and platform without being prescriptive
+6. **All security-critical features must be preserved**:
    - Access control (read-only vs full)
-   - CI environment spoofing
+   - CI environment spoofing (essential for shell access)
    - Retry logic for error handling
-5. **PAT permissions handle security** - no need for command filtering at the code level
+7. **Credential permissions handle security** - no need for command filtering at the code level
+8. **Claude Code Action integration** - leverage existing functionality, don't recreate
 
 ### Current Implementation
 
 - **Invocation**: Currently triggered via GitHub issue/PR comments with username mention
-- **Future**: Designed to handle any GitHub event (push, workflow_run, PR creation, etc.)
-- **Context Preservation**: Event context is always passed to Claude for informed responses
-- **Claude Integration**: Uses Claude CLI with `--dangerously-skip-permissions` flag
+- **Future Platforms**: Telegram, Discord, Slack, and other platforms via UbiquityOS
+- **Future Events**: Any platform event (messages, reactions, file uploads, etc.)
+- **Context Preservation**: Full EventContext always passed to Claude for platform awareness
+- **Claude Integration**: Adopting Claude Code Action as submodule for core functionality
+- **Execution**: GitHub Actions provides compute and shell environment
 
 ### GitHub Actions Execution
 - **Entry Point**: `dist/index.js` (bundled action)
@@ -122,26 +158,121 @@ bun run worker  # Starts Wrangler dev server on port 4000
 ### Deployment
 
 1. Fork repository under personal account (keep name as `personal-agent`)
-2. Add `USER_PAT` to GitHub Actions secrets (with appropriate permissions)
-3. Add `CLAUDE_CODE_OAUTH_TOKEN` to GitHub Actions secrets
-4. Configure access mode if needed (default is full access)
-5. Install UbiquityOS app on the fork
-6. Plugin auto-deploys via GitHub Actions to Cloudflare Workers
+2. Add credentials to GitHub Actions secrets:
+   - `USER_PAT` - GitHub Personal Access Token
+   - `CLAUDE_CODE_OAUTH_TOKEN` - Claude authentication token
+   - Platform-specific tokens as needed
+3. Configure access mode if needed (default is full access)
+4. Install UbiquityOS app on the fork for event routing
+5. Plugin auto-deploys via GitHub Actions to Cloudflare Workers
+6. Configure MCP servers for additional platforms
 
 ### Bridge Communication
 
-The Personal Agent Bridge handles:
+The UbiquityOS Bridge handles:
+- Capturing events from multiple platforms (GitHub, Telegram, Discord, etc.)
 - Routing username mentions to correct agent instances
-- Forwarding event payloads
-- Managing cross-repository permissions
+- Forwarding event payloads with full EventContext
+- Managing cross-platform authentication and permissions
+- Normalizing events into consistent EventContext format
 
 ### Best Practices
 
-- Keep handlers focused and single-purpose
-- Log important actions for debugging
-- Validate input commands thoroughly
-- Use TypeScript types from SDK
-- Follow existing code patterns in the repository
+- Keep core logic platform-agnostic
+- Always include full EventContext in prompts to Claude
+- Let Claude determine appropriate MCP tools based on platform context
 - Preserve all error handling and retry logic
-- Don't add GitHub-specific prompting unless necessary
-- Trust PAT permissions for security rather than code-level filtering
+- Don't add platform-specific code to core logic
+- Use MCP servers for platform-specific functionality
+- Trust credential permissions for security rather than code-level filtering
+- Leverage Claude Code Action functionality rather than recreating it
+- Test with events from multiple platforms to ensure generalization
+
+## Integration Roadmap
+
+### Phase 1: Claude Code Action Integration
+- Adopt Claude Code Action as submodule
+- Modify to accept generalized EventContext
+- Ensure platform field drives MCP tool selection
+- Maintain all existing security features
+
+### Phase 2: Multi-Platform Support
+- Extend EventContext for platform-specific metadata
+- Implement Telegram MCP server integration
+- Add Discord and Slack support
+- Ensure consistent response formatting per platform
+
+### Phase 3: Enhanced Capabilities
+- Add more MCP servers for additional platforms
+- Implement cross-platform workflows
+- Enable agent-to-agent communication
+- Support scheduled and triggered automations
+
+## Implementation Sprint Documentation
+
+Detailed implementation has been broken down into 5 sprints located in `/docs/sprints/`:
+
+### Active Sprints
+1. **Sprint 1: Core Claude Integration** (`sprint-1-core-integration.md`)
+   - Submodule integration at `reference/claude-code-action/`
+   - EventContext adapter implementation
+   - Preserve CI spoofing, retry logic, and access control
+   
+2. **Sprint 2: Platform Abstraction** (`sprint-2-platform-abstraction.md`)
+   - Remove GitHub-specific assumptions from core
+   - Multi-platform credential management (rename `USER_PAT` to `GITHUB_PAT`)
+   - Platform-specific response formatters
+   
+3. **Sprint 3: Telegram MCP** (`sprint-3-telegram-mcp.md`)
+   - Full Telegram Bot API integration
+   - Message formatting (MarkdownV2)
+   - Interactive features (inline keyboards)
+   
+4. **Sprint 4: Testing & Security** (`sprint-4-testing-security.md`)
+   - Comprehensive test coverage (>80%)
+   - Security validation and penetration testing
+   - Monitoring and observability setup
+   
+5. **Sprint 5: Production Deployment** (`sprint-5-deployment.md`)
+   - CI/CD pipeline configuration
+   - Documentation and runbooks
+   - Production deployment procedures
+
+### Product Backlog
+See `docs/sprints/product-backlog.md` for future enhancements including Discord/Slack integration, agent-to-agent communication, and more.
+
+## Critical Implementation Requirements
+
+### NEVER REMOVE OR MODIFY
+1. **CI Environment Spoofing**: The `GITHUB_ACTIONS=false` and `CI=false` environment variables are CRITICAL. Without these, Claude will refuse to execute shell commands in GitHub Actions.
+
+2. **Access Control via PAT**: Security is handled ENTIRELY through PAT permissions. Do NOT add command filtering or sanitization at the code level.
+
+3. **Retry Logic**: The exponential backoff retry mechanism (max 3 attempts) for API errors is battle-tested and essential.
+
+### Platform Integration Checklist
+When adding a new platform:
+- [ ] Create platform adapter in `/src/adapters/`
+- [ ] Add credential environment variable (e.g., `TELEGRAM_BOT_TOKEN`)
+- [ ] Implement response formatter in `/src/formatters/`
+- [ ] Update platform registry with tools and features
+- [ ] Create MCP server if needed for platform-specific operations
+- [ ] Add platform to EventContext.authentication field
+- [ ] Test with real platform events (not just simulated)
+
+### EventContext Requirements
+The EventContext must ALWAYS include:
+- `platform`: Platform identifier (required)
+- `eventType`: Type of event
+- `author`: Who triggered the event
+- `command`: The actual command/message
+- `metadata`: Platform-specific data
+
+### Testing Requirements
+Before deployment:
+- [ ] Unit test coverage > 80%
+- [ ] CI spoofing verified working
+- [ ] PAT access control tested (both read-only and full)
+- [ ] Platform detection accurate
+- [ ] Response formatting validated per platform
+- [ ] End-to-end test for each supported platform

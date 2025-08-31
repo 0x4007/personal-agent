@@ -54,12 +54,37 @@ jobs:
           echo "=== DEBUG: Workflow Inputs ==="
           echo "stateId: ${{ github.event.inputs.stateId }}"
           echo "eventName: ${{ github.event.inputs.eventName }}"
-          echo "eventPayload: ${{ github.event.inputs.eventPayload }}"
-          echo "settings: ${{ github.event.inputs.settings }}"
+
+          # Properly serialize eventPayload JSON
+          echo "eventPayload (raw):"
+          cat << 'EOF'
+          ${{ github.event.inputs.eventPayload }}
+          EOF
+
+          echo ""
+          echo "eventPayload (formatted):"
+          cat << 'EOF' | jq '.' 2>/dev/null || echo "Invalid JSON"
+          ${{ github.event.inputs.eventPayload }}
+          EOF
+
+          echo ""
+          echo "settings:"
+          cat << 'EOF' | jq '.' 2>/dev/null || echo "${{ github.event.inputs.settings }}"
+          ${{ github.event.inputs.settings }}
+          EOF
+
+          echo ""
           echo "authToken: ${{ github.event.inputs.authToken }}"
           echo "ref: ${{ github.event.inputs.ref }}"
           echo "signature: ${{ github.event.inputs.signature }}"
-          echo "command: ${{ github.event.inputs.command }}"
+
+          echo ""
+          echo "command:"
+          cat << 'EOF' | jq '.' 2>/dev/null || echo "${{ github.event.inputs.command }}"
+          ${{ github.event.inputs.command }}
+          EOF
+
+          echo ""
           echo "testMode: ${{ github.event.inputs.testMode }}"
           echo "=== END DEBUG ==="
 
