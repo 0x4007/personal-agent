@@ -45,10 +45,6 @@ export function getPlatformPAT(platform: string): string | undefined {
       return process.env.GITHUB_PAT || process.env.USER_PAT;
     case 'telegram':
       return process.env.TELEGRAM_BOT_TOKEN;
-    case 'discord':
-      return process.env.DISCORD_BOT_TOKEN;
-    case 'slack':
-      return process.env.SLACK_APP_TOKEN;
     default:
       return undefined;
   }

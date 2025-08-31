@@ -116,38 +116,16 @@ describe('EventContext Transformation', () => {
     });
   });
 
-  describe('Discord Events', () => {
-    test('transforms message event correctly', () => {
-      const context: EventContext = {
-        platform: 'discord',
-        eventType: 'message',
-        source: 'channel_123456',
-        author: 'discorduser#1234',
-        command: '@agent create a reminder',
-        metadata: {
-          channelId: 'channel_123456',
-          guildId: 'guild_789',
-          messageId: 'msg_456'
-        }
-      };
-
-      expect(context.platform).toBe('discord');
-      expect(context.metadata?.channelId).toBe('channel_123456');
-      expect(context.metadata?.guildId).toBe('guild_789');
-    });
-  });
 
   describe('Platform Detection', () => {
     test('correctly identifies platform from context', () => {
       const contexts: EventContext[] = [
         { platform: 'github', eventType: 'issue_comment', author: 'user', command: 'test' },
         { platform: 'telegram', eventType: 'message', author: 'user', command: 'test' },
-        { platform: 'discord', eventType: 'message', author: 'user', command: 'test' },
-        { platform: 'slack', eventType: 'message', author: 'user', command: 'test' }
       ];
 
       contexts.forEach(ctx => {
-        expect(['github', 'telegram', 'discord', 'slack']).toContain(ctx.platform);
+        expect(['github', 'telegram']).toContain(ctx.platform);
       });
     });
 

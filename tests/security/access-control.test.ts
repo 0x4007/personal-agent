@@ -74,17 +74,6 @@ describe('Access Control', () => {
       expect(getPlatformPAT('telegram')).toBe('telegram-token');
     });
 
-    it('should return DISCORD_BOT_TOKEN for discord platform', () => {
-      process.env.DISCORD_BOT_TOKEN = 'discord-token';
-
-      expect(getPlatformPAT('discord')).toBe('discord-token');
-    });
-
-    it('should return SLACK_APP_TOKEN for slack platform', () => {
-      process.env.SLACK_APP_TOKEN = 'slack-token';
-
-      expect(getPlatformPAT('slack')).toBe('slack-token');
-    });
 
     it('should return undefined for unknown platform', () => {
       expect(getPlatformPAT('unknown')).toBeUndefined();

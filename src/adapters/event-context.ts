@@ -3,7 +3,7 @@
  * This structure represents events from any platform in a unified format
  */
 export interface EventContext {
-  platform: string;                // "github", "telegram", "discord"
+  platform: string;                // "github", "telegram", etc.
   eventType: string;              // "issue_comment", "message", etc.
   source?: string;                // Platform-specific identifier
   repository?: string;            // GitHub: "owner/repo"
@@ -14,14 +14,13 @@ export interface EventContext {
   metadata?: {
     chatId?: string;              // Telegram
     messageId?: string;           
-    channelId?: string;           // Discord/Slack
+    channelId?: string;           // Platform-specific channel ID
     threadId?: string;
     [key: string]: any;
   };
   authentication?: {
     github?: boolean;
     telegram?: boolean;
-    discord?: boolean;
     [platform: string]: boolean | undefined;
   };
 }

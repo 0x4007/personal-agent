@@ -10,8 +10,6 @@ export class CredentialManager {
     // Load platform-specific credentials
     this.credentials.set('github', env.GITHUB_PAT || env.USER_PAT); // Fallback to USER_PAT for backwards compatibility
     this.credentials.set('telegram', env.TELEGRAM_BOT_TOKEN);
-    this.credentials.set('discord', env.DISCORD_BOT_TOKEN);
-    this.credentials.set('slack', env.SLACK_APP_TOKEN);
   }
   
   hasCredential(platform: string): boolean {
@@ -61,9 +59,7 @@ export class CredentialManager {
   private getRequiredEnvVar(platform: string): string {
     const mapping: Record<string, string> = {
       github: 'GITHUB_PAT',
-      telegram: 'TELEGRAM_BOT_TOKEN',
-      discord: 'DISCORD_BOT_TOKEN',
-      slack: 'SLACK_APP_TOKEN'
+      telegram: 'TELEGRAM_BOT_TOKEN'
     };
     return mapping[platform.toLowerCase()] || 'UNKNOWN_TOKEN';
   }

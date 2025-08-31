@@ -1,5 +1,5 @@
 import { spawn, execSync } from "child_process";
-import { writeFile, unlink } from "fs/promises";
+import { writeFile, unlink, mkdtemp } from "fs/promises";
 import { join } from "path";
 import { Context } from "../types";
 import { EventContext } from "../types/event-context";
@@ -98,7 +98,6 @@ Provide a brief but helpful response.`;
 
   logger.verbose(`Exiting claudeAgent`);
 }
-
 
 function buildPrompt(isReadOnly: boolean, context: EventContext): string {
   const accessDescription = isReadOnly
@@ -301,7 +300,6 @@ async function executeClaudeCommandInternal(
     });
   } finally {
     try {
-
       await unlink(promptPath);
     } catch {
       // Ignore cleanup errors
@@ -311,18 +309,39 @@ async function executeClaudeCommandInternal(
 
 async function configureGitHubAuth(token: string, logger: { info: (msg: string) => void; verbose: (msg: string) => void }): Promise<void> {
   try {
+    // Create a temporary directory for the token file
+    const tmpDir = await mkdtemp(join(process.env.RUNNER_TEMP || "/tmp", "gh-auth-"));
+    const tokenPath = join(tmpDir, "token.txt");
+    
+    // Write token to temporary file
+    await writeFile(tokenPath, token, { mode: 0o600 });
+    
+    // Use full path to gh command to avoid PATH issues
+    const ghPath = process.env.CI ? "gh" : `${process.env.HOME || "/home/runner"}/.local/bin/gh`;
+    
+    try {
+      // eslint-disable-next-line sonarjs/os-command
+      execSync(`${ghPath} auth login --with-token < "${tokenPath}"`, {
+        stdio: "ignore",
+        env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
+      });
 
-    execSync(`echo "${token}" | gh auth login --with-token`, {
-      stdio: "ignore",
-      env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
-    });
-
-    const authStatus = execSync("gh auth status", {
-      encoding: "utf8",
-      env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
-    });
-    logger.verbose(`GitHub CLI auth status: ${authStatus}`);
-    logger.info("GitHub CLI authenticated successfully with user PAT");
+      // eslint-disable-next-line sonarjs/os-command
+      const authStatus = execSync(`${ghPath} auth status`, {
+        encoding: "utf8",
+        env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
+      });
+      logger.verbose(`GitHub CLI auth status: ${authStatus}`);
+      logger.info("GitHub CLI authenticated successfully with user PAT");
+    } finally {
+      // Clean up temporary files
+      try {
+        await unlink(tokenPath);
+        // Note: tmpDir cleanup will be handled by OS temp cleanup
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   } catch (error) {
     logger.info(`Failed to configure GitHub CLI authentication: ${error instanceof Error ? error.message : String(error)}`);
   }

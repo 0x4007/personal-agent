@@ -4,7 +4,7 @@
  */
 export interface EventContext {
   /**
-   * Platform identifier (e.g., "github", "telegram", "discord")
+   * Platform identifier (e.g., "github", "telegram")
    * This drives MCP tool selection and response formatting
    */
   platform: string;
@@ -64,16 +64,15 @@ export interface EventContext {
     messageId?: string;
     callbackQueryId?: string;
     chatType?: 'private' | 'group' | 'supergroup' | 'channel';
-    threadId?: number | string;  // number for Telegram, string for Slack
+    threadId?: number | string;  // Platform-specific thread ID
     userId?: number;
     userIsAdmin?: boolean;
     hasPhoto?: boolean;
     photoId?: string;
     replyToMessageId?: string;
     
-    // Discord-specific
+    // Platform-specific channel ID
     channelId?: string;
-    guildId?: string;
     
     // GitHub-specific
     action?: string;
@@ -97,7 +96,6 @@ export interface EventContext {
   authentication?: {
     github?: boolean;
     telegram?: boolean;
-    discord?: boolean;
     [platform: string]: boolean | undefined;
   };
   

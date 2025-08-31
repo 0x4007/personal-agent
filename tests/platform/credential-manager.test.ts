@@ -65,16 +65,12 @@ describe("CredentialManager", () => {
       const env = {
         GITHUB_PAT: "github-token",
         TELEGRAM_BOT_TOKEN: "telegram-token",
-        DISCORD_BOT_TOKEN: "", // Empty
-        // SLACK_APP_TOKEN not provided
       };
       const manager = new CredentialManager(env);
       
       const available = manager.getAvailablePlatforms();
       expect(available).toContain("github");
       expect(available).toContain("telegram");
-      expect(available).not.toContain("discord");
-      expect(available).not.toContain("slack");
     });
 
     it("should return empty array when no credentials are available", () => {
@@ -97,8 +93,6 @@ describe("CredentialManager", () => {
       const status = manager.getAuthenticationStatus();
       expect(status.github).toBe(true);
       expect(status.telegram).toBe(true);
-      expect(status.discord).toBe(false);
-      expect(status.slack).toBe(false);
     });
   });
 
@@ -129,9 +123,6 @@ describe("CredentialManager", () => {
       
       const telegramResult = manager.validatePlatformCredentials("telegram");
       expect(telegramResult.message).toContain("TELEGRAM_BOT_TOKEN");
-      
-      const discordResult = manager.validatePlatformCredentials("discord");
-      expect(discordResult.message).toContain("DISCORD_BOT_TOKEN");
     });
   });
 });

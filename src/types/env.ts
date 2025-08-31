@@ -16,8 +16,6 @@ export const envSchema = T.Object({
   // Platform-specific credentials
   GITHUB_PAT: T.Optional(T.String()),
   TELEGRAM_BOT_TOKEN: T.Optional(T.String()),
-  DISCORD_BOT_TOKEN: T.Optional(T.String()),
-  SLACK_APP_TOKEN: T.Optional(T.String()),
   // Backwards compatibility (will be deprecated)
   USER_PAT: T.Optional(T.String()),
 });

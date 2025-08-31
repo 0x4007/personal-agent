@@ -109,8 +109,7 @@ describe("PlatformRegistry", () => {
       const platforms = PlatformRegistry.getAllPlatforms();
       expect(platforms).toContain("github");
       expect(platforms).toContain("telegram");
-      expect(platforms).toContain("discord");
-      expect(platforms).toContain("slack");
+      expect(platforms.length).toBe(2);
     });
   });
 });

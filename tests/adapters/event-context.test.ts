@@ -82,11 +82,11 @@ describe('EventContext', () => {
   describe('createEventContext', () => {
     it('should create context with defaults', () => {
       const context = createEventContext({
-        platform: 'discord',
+        platform: 'telegram',
         eventType: 'message',
       });
 
-      expect(context.platform).toBe('discord');
+      expect(context.platform).toBe('telegram');
       expect(context.eventType).toBe('message');
       expect(context.author).toBe('');
       expect(context.command).toBe('');
@@ -94,20 +94,20 @@ describe('EventContext', () => {
 
     it('should merge partial context with defaults', () => {
       const context = createEventContext({
-        platform: 'slack',
-        eventType: 'app_mention',
-        author: 'slackuser',
+        platform: 'github',
+        eventType: 'issue_comment',
+        author: 'githubuser',
         command: '@agent help',
         metadata: {
-          channelId: 'C12345',
+          issueNumber: '123',
         },
       });
 
-      expect(context.platform).toBe('slack');
-      expect(context.eventType).toBe('app_mention');
-      expect(context.author).toBe('slackuser');
+      expect(context.platform).toBe('github');
+      expect(context.eventType).toBe('issue_comment');
+      expect(context.author).toBe('githubuser');
       expect(context.command).toBe('@agent help');
-      expect(context.metadata?.channelId).toBe('C12345');
+      expect(context.metadata?.issueNumber).toBe('123');
     });
   });
 });
