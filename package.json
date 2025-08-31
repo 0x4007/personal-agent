@@ -29,14 +29,8 @@
     "test:unit": "jest tests/*.test.ts --coverage",
     "test:integration": "jest tests/claude-integration.test.ts",
     "test:security": "bunx audit-ci --moderate",
-    "test:e2e": "jest --testMatch '**/e2e/**/*.test.ts'",
-    "test:e2e:github": "jest tests/e2e/github.e2e.test.ts",
-    "test:e2e:telegram": "jest tests/e2e/telegram.e2e.test.ts",
-    "test:performance": "jest tests/performance.test.ts --maxWorkers=1",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage --coverageDirectory=coverage",
-    "test:smoke": "jest --testMatch '**/smoke/**/*.test.ts' --verbose",
-    "validate-config": "bun run src/scripts/validate-config.ts",
     "worker": "wrangler dev --env dev --port 4000"
   },
   "keywords": [

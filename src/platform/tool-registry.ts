@@ -37,20 +37,6 @@ export class ToolRegistry {
         description: 'Telegram Bot API operations via MCP',
         platformSpecific: true
       }
-    ]],
-    ['discord', [
-      {
-        name: 'discord-mcp',
-        description: 'Discord Bot API operations via MCP',
-        platformSpecific: true
-      }
-    ]],
-    ['slack', [
-      {
-        name: 'slack-mcp',
-        description: 'Slack App API operations via MCP',
-        platformSpecific: true
-      }
     ]]
   ]);
   

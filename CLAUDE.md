@@ -20,7 +20,7 @@ This project leverages the Claude Code Action as its foundation, extending it to
 - **AI Core**: Claude Code Action (submodule integration)
 - **Event Router**: UbiquityOS (captures events from multiple platforms)
 - **Invocation**: Username mentions trigger agent activation
-- **Platform Support**: GitHub (initial), Telegram, Discord, Slack (planned)
+- **Platform Support**: GitHub (implemented), Telegram, Google Drive (planned)
 - **MCP Integration**: Model Context Protocol for platform-specific capabilities
 
 ## Key Design Decisions
@@ -121,9 +121,8 @@ bun run worker  # Starts Wrangler dev server on port 4000
 - `CLAUDE_CODE_OAUTH_TOKEN` - Claude authentication token for CLI integration
 - `ACCESS_MODE` - Set to "read-only" for limited access mode
 - `AGENT_OWNER` - Username that triggers the agent
-- `TELEGRAM_BOT_TOKEN` - Telegram Bot API token (future)
-- `DISCORD_BOT_TOKEN` - Discord Bot token (future)
-- `SLACK_APP_TOKEN` - Slack App token (future)
+- `TELEGRAM_BOT_TOKEN` - Telegram Bot API token (planned)
+- `GOOGLE_DRIVE_CREDENTIALS` - Google Drive API credentials (planned)
 - Platform-specific credentials as needed
 
 ### Important Implementation Notes
@@ -143,7 +142,7 @@ bun run worker  # Starts Wrangler dev server on port 4000
 ### Current Implementation
 
 - **Invocation**: Currently triggered via GitHub issue/PR comments with username mention
-- **Future Platforms**: Telegram, Discord, Slack, and other platforms via UbiquityOS
+- **Planned Platforms**: Telegram (bot messages), Google Drive (file operations)
 - **Future Events**: Any platform event (messages, reactions, file uploads, etc.)
 - **Context Preservation**: Full EventContext always passed to Claude for platform awareness
 - **Claude Integration**: Adopting Claude Code Action as submodule for core functionality
@@ -198,8 +197,8 @@ The UbiquityOS Bridge handles:
 
 ### Phase 2: Multi-Platform Support
 - Extend EventContext for platform-specific metadata
-- Implement Telegram MCP server integration
-- Add Discord and Slack support
+- Implement Telegram Bot API integration
+- Add Google Drive integration for file operations
 - Ensure consistent response formatting per platform
 
 ### Phase 3: Enhanced Capabilities
@@ -268,11 +267,154 @@ The EventContext must ALWAYS include:
 - `command`: The actual command/message
 - `metadata`: Platform-specific data
 
-### Testing Requirements
+## CRITICAL: Anti-Patterns to Avoid
+
+### ❌ DO NOT Create Test Theater
+
+**What NOT to do:**
+```typescript
+// WRONG: Fake test that always passes
+test('Agent responds to issue comment', async () => {
+  const response = await processGitHubEvent(event);
+  expect(response.success).toBe(true); // This always returns true!
+});
+
+// WRONG: Mock that doesn't test real functionality
+async function processGitHubEvent(event) {
+  return { success: true, responded: true }; // Hardcoded success
+}
+```
+
+**What TO do:**
+```typescript
+// RIGHT: Test actual critical functionality
+test('CI spoofing prevents restricted mode', () => {
+  spoofCIEnvironment();
+  expect(process.env.GITHUB_ACTIONS).toBe('false'); // Actually prevents Claude restrictions
+});
+```
+
+### ❌ DO NOT Over-Engineer Abstractions
+
+**What NOT to do:**
+```typescript
+// WRONG: 280-line prompt builder that's never used
+export class PlatformAgnosticPromptBuilder {
+  private contexts: Map<string, PromptContext>;
+  private formatters: Map<string, Formatter>;
+  // ... 250 more lines of unused abstraction
+}
+
+// Meanwhile, actual implementation:
+function buildPrompt(context) {
+  return `You are processing: ${context.command}`; // 1 line
+}
+```
+
+**What TO do:**
+```typescript
+// RIGHT: Simple, direct implementation that works
+function buildPrompt(context: EventContext): string {
+  return `Platform: ${context.platform}\nCommand: ${context.command}`;
+}
+```
+
+### ❌ DO NOT Create Placeholder Implementations
+
+**What NOT to do:**
+```typescript
+// WRONG: Placeholder that pretends to work
+['discord', {
+  formatter: new GitHubFormatter(), // Using wrong formatter as placeholder!
+  tools: ['discord-mcp'],           // Tool doesn't exist!
+}]
+```
+
+**What TO do:**
+```typescript
+// RIGHT: Only implement what actually exists
+// Don't add Discord until Discord is actually implemented
+```
+
+### ❌ DO NOT Commit Generated Files
+
+**What NOT to do:**
+```
+src/handler.ts    # Source file
+src/handler.js    # Generated file - DON'T COMMIT THIS!
+```
+
+**What TO do:**
+```bash
+# Add to .gitignore
+*.js
+!jest.config.js
+dist/
+```
+
+### ❌ DO NOT Write Tests for Trivial Assignments
+
+**What NOT to do:**
+```typescript
+// WRONG: Testing object property assignment
+test('sets platform correctly', () => {
+  const context = { platform: 'github' };
+  expect(context.platform).toBe('github'); // Duh!
+});
+```
+
+**What TO do:**
+```typescript
+// RIGHT: Test business logic and edge cases
+test('escapes Telegram MarkdownV2 special characters', () => {
+  const result = formatter.format('Hello_world[test]');
+  expect(result).toBe('Hello\\_world\\[test\\]'); // Prevents production errors
+});
+```
+
+## Best Practices for Minimal, Working Code
+
+### ✅ Keep It Simple and Direct
+
+1. **Start with the simplest working implementation**
+   - Get it working first, abstract later (if needed)
+   - Most systems need <1000 lines of actual code
+
+2. **Only test what can actually break**
+   - Security boundaries (access control)
+   - Critical workarounds (CI spoofing)
+   - Data transformations that prevent errors (escaping, formatting)
+   - Retry logic and error handling
+
+3. **Delete aggressively**
+   - If a file isn't imported anywhere, delete it
+   - If a test uses mocks with hardcoded responses, delete it
+   - If documentation duplicates what's in code comments, delete it
+
+4. **Real integration > Mock integration**
+   - Either test against real APIs or don't test at all
+   - Mock tests provide false confidence
+
+### Example of Good vs Bad Implementation
+
+**BAD (Over-engineered):**
+- 5000+ lines of code
+- 65% fake tests
+- Multiple abstraction layers
+- Placeholder implementations
+- Generated files committed
+
+**GOOD (Minimal, working):**
+- ~500 lines of actual functionality
+- Tests only for critical paths
+- Direct implementations
+- No placeholders
+- Clean repository
+
+### Testing Requirements (Revised)
 Before deployment:
-- [ ] Unit test coverage > 80%
-- [ ] CI spoofing verified working
-- [ ] PAT access control tested (both read-only and full)
-- [ ] Platform detection accurate
-- [ ] Response formatting validated per platform
-- [ ] End-to-end test for each supported platform
+- [ ] CI spoofing verified working (CRITICAL)
+- [ ] PAT access control tested with real tokens
+- [ ] Error retry logic tested with real failures
+- [ ] NO test theater - only real functionality tests
+- [ ] Delete all tests that return hardcoded success

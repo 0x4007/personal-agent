@@ -4,7 +4,6 @@ import { join } from "path";
 import { Context } from "../types";
 import { EventContext } from "../types/event-context";
 import { CredentialManager } from "../platform/credential-manager";
-import { PlatformRegistry } from "../platform/platform-registry";
 import { ToolRegistry } from "../platform/tool-registry";
 
 export async function claudeAgent(context: Context): Promise<void> {
@@ -39,7 +38,7 @@ export async function claudeAgent(context: Context): Promise<void> {
   // Initialize platform systems
   const credentialManager = new CredentialManager(process.env);
   const platform = "github"; // Default to GitHub for now
-  
+
   // Build event context for Claude with platform awareness
   const eventContext: EventContext = {
     platform,
@@ -116,21 +115,35 @@ function buildPrompt(isReadOnly: boolean, context: EventContext): string {
     .join('\n');
 
   // Add tool information if available
+  const toolsList = context.availableTools?.map(tool => `- ${tool}`).join('\n') || '';
   const toolDescription = context.availableTools && context.availableTools.length > 0
-    ? `\n\nAvailable Tools for ${context.platform}:\n${context.availableTools.map(tool => `- ${tool}`).join('\n')}`
+    ? `\n\nAvailable Tools for ${context.platform}:\n${toolsList}`
     : '';
 
   // Add authentication status if available
+  const authEntries = context.authentication
+    ? Object.entries(context.authentication)
+        .map(([platform, hasAuth]) => {
+          const status = hasAuth ? 'authenticated' : 'not authenticated';
+          return `- ${platform}: ${status}`;
+        })
+        .join('\n')
+    : '';
   const authDescription = context.authentication
-    ? `\n\nAuthentication Status:\n${Object.entries(context.authentication)
-        .map(([platform, hasAuth]) => `- ${platform}: ${hasAuth ? 'authenticated' : 'not authenticated'}`)
-        .join('\n')}`
+    ? `\n\nAuthentication Status:\n${authEntries}`
     : '';
 
   // Platform-specific instructions
-  const platformInstructions = context.platform === 'github'
-    ? !isReadOnly ? 'The repository is already cloned and you\'re in the correct directory. You can use git and gh CLI commands which are already authenticated.' : 'If asked to perform write operations, explain that you only have read access.'
-    : `You are responding to a ${context.platform} event. Use appropriate tools and formatting for this platform.`;
+  let platformInstructions: string;
+  if (context.platform === 'github') {
+    if (isReadOnly) {
+      platformInstructions = 'If asked to perform write operations, explain that you only have read access.';
+    } else {
+      platformInstructions = 'The repository is already cloned and you\'re in the correct directory. You can use git and gh CLI commands which are already authenticated.';
+    }
+  } else {
+    platformInstructions = `You are responding to a ${context.platform} event. Use appropriate tools and formatting for this platform.`;
+  }
 
   return `You are an assistant responding to a request.
 ${accessDescription}
@@ -264,9 +277,10 @@ async function executeClaudeCommandInternal(
           logger.info(`Error output: ${errorOutput}`);
           reject(new Error(`Claude CLI produced no output. Error: ${errorOutput}`));
         } else {
-          // eslint-disable-next-line no-control-regex, sonarjs/no-control-regex
+          // Clean ANSI escape codes and other formatting
+           
           const cleanOutput = output
-            .replace(/\x1b\[[0-9;]*m/g, "")
+            .replace(/\[[0-9;]*m/g, "")
             .replace(/^\s*Claude\s+Code\s+v[\d.]+\s*/gm, "")
             .replace(/^\s*Human:\s*/gm, "")
             .replace(/^\s*Assistant:\s*/gm, "")
@@ -287,7 +301,7 @@ async function executeClaudeCommandInternal(
     });
   } finally {
     try {
-      // eslint-disable-next-line sonarjs/os-command
+
       await unlink(promptPath);
     } catch {
       // Ignore cleanup errors
@@ -297,7 +311,7 @@ async function executeClaudeCommandInternal(
 
 async function configureGitHubAuth(token: string, logger: { info: (msg: string) => void; verbose: (msg: string) => void }): Promise<void> {
   try {
-    // eslint-disable-next-line sonarjs/no-os-command-from-path
+
     execSync(`echo "${token}" | gh auth login --with-token`, {
       stdio: "ignore",
       env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },

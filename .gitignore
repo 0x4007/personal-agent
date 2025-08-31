@@ -16,3 +16,9 @@ cypress/screenshots
 script.ts
 .wrangler
 test-dashboard.md
+
+# Compiled files
+*.js
+!jest.config.js
+!build-action.js
+dist/

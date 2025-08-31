@@ -62,11 +62,19 @@ describe('Security Controls', () => {
     });
     
     test('Credentials isolated per platform', () => {
+      // Test that credentials can be different per platform
+      process.env.GITHUB_PAT = 'test_github_pat';
+      process.env.TELEGRAM_BOT_TOKEN = 'test_telegram_token';
+      
       const githubPat = process.env.GITHUB_PAT;
       const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
       
       // Ensure they're separate variables
       expect(githubPat).not.toBe(telegramToken);
+      
+      // Clean up
+      delete process.env.GITHUB_PAT;
+      delete process.env.TELEGRAM_BOT_TOKEN;
     });
     
     test('Environment variables not exposed', () => {

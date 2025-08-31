@@ -40,30 +40,6 @@ export class PlatformRegistry {
         supportsInlineImages: false,
         maxMessageLength: 4096
       }
-    }],
-    ['discord', {
-      name: 'Discord',
-      formatter: new GitHubFormatter(), // Placeholder - will implement DiscordFormatter later
-      tools: ['discord-mcp', 'shell'],
-      credentialEnvVar: 'DISCORD_BOT_TOKEN',
-      features: {
-        supportsMarkdown: true,
-        supportsCodeBlocks: true,
-        supportsInlineImages: true,
-        maxMessageLength: 2000
-      }
-    }],
-    ['slack', {
-      name: 'Slack',
-      formatter: new GitHubFormatter(), // Placeholder - will implement SlackFormatter later
-      tools: ['slack-mcp', 'shell'],
-      credentialEnvVar: 'SLACK_APP_TOKEN',
-      features: {
-        supportsMarkdown: true,
-        supportsCodeBlocks: true,
-        supportsInlineImages: false,
-        maxMessageLength: 40000
-      }
     }]
   ]);
 
