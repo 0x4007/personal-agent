@@ -4,7 +4,8 @@ import { LOG_LEVEL } from "@ubiquity-os/ubiquity-os-logger";
 import { runPlugin } from "./index";
 import { envSchema, pluginSettingsSchema } from "./types";
 export default createActionsPlugin(async (context) => {
-    context.octokit = new customOctokit({ auth: context.env.USER_PAT });
+    // Use GITHUB_PAT with fallback to USER_PAT for backwards compatibility
+    context.octokit = new customOctokit({ auth: context.env.GITHUB_PAT || context.env.USER_PAT });
     try {
         const result = await runPlugin(context);
         // Allow event loop to drain naturally

@@ -13,7 +13,13 @@ export const envSchema = T.Object({
   LOG_LEVEL: T.Optional(T.Enum(LOG_LEVEL, { default: LOG_LEVEL.INFO })),
   KERNEL_PUBLIC_KEY: T.Optional(T.String()),
   AGENT_OWNER: T.String(),
-  USER_PAT: T.String(),
+  // Platform-specific credentials
+  GITHUB_PAT: T.Optional(T.String()),
+  TELEGRAM_BOT_TOKEN: T.Optional(T.String()),
+  DISCORD_BOT_TOKEN: T.Optional(T.String()),
+  SLACK_APP_TOKEN: T.Optional(T.String()),
+  // Backwards compatibility (will be deprecated)
+  USER_PAT: T.Optional(T.String()),
 });
 
 export type Env = StaticDecode<typeof envSchema>;

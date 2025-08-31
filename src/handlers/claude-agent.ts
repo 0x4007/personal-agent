@@ -2,6 +2,10 @@ import { spawn, execSync } from "child_process";
 import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { Context } from "../types";
+import { EventContext } from "../types/event-context";
+import { CredentialManager } from "../platform/credential-manager";
+import { PlatformRegistry } from "../platform/platform-registry";
+import { ToolRegistry } from "../platform/tool-registry";
 
 export async function claudeAgent(context: Context): Promise<void> {
   const { logger, payload } = context;
@@ -32,13 +36,20 @@ export async function claudeAgent(context: Context): Promise<void> {
 
   logger.info(`Processing command with Claude: ${command}`);
 
-  // Build event context for Claude
-  const eventContext = {
+  // Initialize platform systems
+  const credentialManager = new CredentialManager(process.env);
+  const platform = "github"; // Default to GitHub for now
+  
+  // Build event context for Claude with platform awareness
+  const eventContext: EventContext = {
+    platform,
     eventType: "issue_comment",
     repository: `${owner}/${repo}`,
     issueNumber: String(issueNumber),
     author: sender || "unknown",
-    command
+    command,
+    authentication: credentialManager.getAuthenticationStatus(),
+    availableTools: ToolRegistry.getToolNamesForPlatform(platform)
   };
 
   try {
@@ -89,38 +100,47 @@ Provide a brief but helpful response.`;
   logger.verbose(`Exiting claudeAgent`);
 }
 
-interface EventContext {
-  eventType: string;
-  repository: string;
-  issueNumber?: string;
-  pullRequestNumber?: string;
-  author: string;
-  command: string;
-  [key: string]: string | number | undefined;
-}
 
 function buildPrompt(isReadOnly: boolean, context: EventContext): string {
   const accessDescription = isReadOnly
     ? "You have READ-ONLY access. You can analyze and read code but CANNOT create commits, push branches, or modify anything."
     : "You have full access to perform operations.";
 
+  // Format context, excluding complex objects and the command itself
   const contextDescription = Object.entries(context)
-    .filter(([key]) => key !== 'command')
+    .filter(([key]) => key !== 'command' && key !== 'authentication' && key !== 'availableTools' && key !== 'metadata')
     .map(([key, value]) => {
       const formattedKey = key.replace(/([A-Z])/g, ' $1').toLowerCase();
       return `- ${formattedKey}: ${value}`;
     })
     .join('\n');
 
+  // Add tool information if available
+  const toolDescription = context.availableTools && context.availableTools.length > 0
+    ? `\n\nAvailable Tools for ${context.platform}:\n${context.availableTools.map(tool => `- ${tool}`).join('\n')}`
+    : '';
+
+  // Add authentication status if available
+  const authDescription = context.authentication
+    ? `\n\nAuthentication Status:\n${Object.entries(context.authentication)
+        .map(([platform, hasAuth]) => `- ${platform}: ${hasAuth ? 'authenticated' : 'not authenticated'}`)
+        .join('\n')}`
+    : '';
+
+  // Platform-specific instructions
+  const platformInstructions = context.platform === 'github'
+    ? !isReadOnly ? 'The repository is already cloned and you\'re in the correct directory. You can use git and gh CLI commands which are already authenticated.' : 'If asked to perform write operations, explain that you only have read access.'
+    : `You are responding to a ${context.platform} event. Use appropriate tools and formatting for this platform.`;
+
   return `You are an assistant responding to a request.
 ${accessDescription}
 
 Event Context:
-${contextDescription}
+${contextDescription}${toolDescription}${authDescription}
 
 Request: ${context.command}
 
-${!isReadOnly ? 'The repository is already cloned and you\'re in the correct directory. You can use git and gh CLI commands which are already authenticated.' : 'If asked to perform write operations, explain that you only have read access.'}`;
+${platformInstructions}`;
 }
 
 async function executeClaudeCommand(
@@ -160,12 +180,13 @@ async function executeClaudeCommandInternal(
 ): Promise<string> {
   logger.verbose("Executing Claude CLI command internal...");
 
-  const userPat = process.env.USER_PAT;
+  // Use GITHUB_PAT with fallback to USER_PAT for backwards compatibility
+  const userPat = process.env.GITHUB_PAT || process.env.USER_PAT;
   if (userPat) {
     logger.info("Configuring GitHub CLI authentication...");
     await configureGitHubAuth(userPat, logger);
   } else {
-    logger.info("No USER_PAT found, gh CLI will use default authentication");
+    logger.info("No GITHUB_PAT/USER_PAT found, gh CLI will use default authentication");
   }
 
   const tmpDir = process.env.RUNNER_TEMP || "/tmp";
@@ -195,8 +216,8 @@ async function executeClaudeCommandInternal(
           GITHUB_ACTIONS: "false",
           CI: "false",
           CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-          GITHUB_TOKEN: process.env.USER_PAT || process.env.GITHUB_TOKEN,
-          GH_TOKEN: process.env.USER_PAT || process.env.GITHUB_TOKEN,
+          GITHUB_TOKEN: process.env.GITHUB_PAT || process.env.USER_PAT || process.env.GITHUB_TOKEN,
+          GH_TOKEN: process.env.GITHUB_PAT || process.env.USER_PAT || process.env.GITHUB_TOKEN,
           HOME: process.env.HOME || "/home/runner",
         },
         stdio: ["ignore", "pipe", "pipe"],
