@@ -1,5 +1,5 @@
 import { spawn, execSync } from "child_process";
-import { writeFile, unlink, mkdtemp } from "fs/promises";
+import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { Context } from "../types";
 import { EventContext } from "../types/event-context";
@@ -48,7 +48,7 @@ export async function claudeAgent(context: Context): Promise<void> {
     author: sender || "unknown",
     command,
     authentication: credentialManager.getAuthenticationStatus(),
-    availableTools: ToolRegistry.getToolNamesForPlatform(platform)
+    availableTools: ToolRegistry.getToolNamesForPlatform(platform),
   };
 
   try {
@@ -106,39 +106,36 @@ function buildPrompt(isReadOnly: boolean, context: EventContext): string {
 
   // Format context, excluding complex objects and the command itself
   const contextDescription = Object.entries(context)
-    .filter(([key]) => key !== 'command' && key !== 'authentication' && key !== 'availableTools' && key !== 'metadata')
+    .filter(([key]) => key !== "command" && key !== "authentication" && key !== "availableTools" && key !== "metadata")
     .map(([key, value]) => {
-      const formattedKey = key.replace(/([A-Z])/g, ' $1').toLowerCase();
+      const formattedKey = key.replace(/([A-Z])/g, " $1").toLowerCase();
       return `- ${formattedKey}: ${value}`;
     })
-    .join('\n');
+    .join("\n");
 
   // Add tool information if available
-  const toolsList = context.availableTools?.map(tool => `- ${tool}`).join('\n') || '';
-  const toolDescription = context.availableTools && context.availableTools.length > 0
-    ? `\n\nAvailable Tools for ${context.platform}:\n${toolsList}`
-    : '';
+  const toolsList = context.availableTools?.map((tool) => `- ${tool}`).join("\n") || "";
+  const toolDescription = context.availableTools && context.availableTools.length > 0 ? `\n\nAvailable Tools for ${context.platform}:\n${toolsList}` : "";
 
   // Add authentication status if available
   const authEntries = context.authentication
     ? Object.entries(context.authentication)
         .map(([platform, hasAuth]) => {
-          const status = hasAuth ? 'authenticated' : 'not authenticated';
+          const status = hasAuth ? "authenticated" : "not authenticated";
           return `- ${platform}: ${status}`;
         })
-        .join('\n')
-    : '';
-  const authDescription = context.authentication
-    ? `\n\nAuthentication Status:\n${authEntries}`
-    : '';
+        .join("\n")
+    : "";
+  const authDescription = context.authentication ? `\n\nAuthentication Status:\n${authEntries}` : "";
 
   // Platform-specific instructions
   let platformInstructions: string;
-  if (context.platform === 'github') {
+  if (context.platform === "github") {
     if (isReadOnly) {
-      platformInstructions = 'If asked to perform write operations, explain that you only have read access.';
+      platformInstructions = "If asked to perform write operations, explain that you only have read access.";
     } else {
-      platformInstructions = 'The repository is already cloned and you\'re in the correct directory. You can use git and gh CLI commands which are already authenticated.';
+      platformInstructions =
+        "The repository is already cloned and you're in the correct directory. You can use git and gh CLI commands which are already authenticated.";
     }
   } else {
     platformInstructions = `You are responding to a ${context.platform} event. Use appropriate tools and formatting for this platform.`;
@@ -277,7 +274,7 @@ async function executeClaudeCommandInternal(
           reject(new Error(`Claude CLI produced no output. Error: ${errorOutput}`));
         } else {
           // Clean ANSI escape codes and other formatting
-           
+
           const cleanOutput = output
             .replace(/\[[0-9;]*m/g, "")
             .replace(/^\s*Claude\s+Code\s+v[\d.]+\s*/gm, "")
@@ -309,39 +306,17 @@ async function executeClaudeCommandInternal(
 
 async function configureGitHubAuth(token: string, logger: { info: (msg: string) => void; verbose: (msg: string) => void }): Promise<void> {
   try {
-    // Create a temporary directory for the token file
-    const tmpDir = await mkdtemp(join(process.env.RUNNER_TEMP || "/tmp", "gh-auth-"));
-    const tokenPath = join(tmpDir, "token.txt");
-    
-    // Write token to temporary file
-    await writeFile(tokenPath, token, { mode: 0o600 });
-    
-    // Use full path to gh command to avoid PATH issues
-    const ghPath = process.env.CI ? "gh" : `${process.env.HOME || "/home/runner"}/.local/bin/gh`;
-    
-    try {
-      // eslint-disable-next-line sonarjs/os-command
-      execSync(`${ghPath} auth login --with-token < "${tokenPath}"`, {
-        stdio: "ignore",
-        env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
-      });
+    execSync(`echo "${token}" | gh auth login --with-token`, {
+      stdio: "ignore",
+      env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
+    });
 
-      // eslint-disable-next-line sonarjs/os-command
-      const authStatus = execSync(`${ghPath} auth status`, {
-        encoding: "utf8",
-        env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
-      });
-      logger.verbose(`GitHub CLI auth status: ${authStatus}`);
-      logger.info("GitHub CLI authenticated successfully with user PAT");
-    } finally {
-      // Clean up temporary files
-      try {
-        await unlink(tokenPath);
-        // Note: tmpDir cleanup will be handled by OS temp cleanup
-      } catch {
-        // Ignore cleanup errors
-      }
-    }
+    const authStatus = execSync("gh auth status", {
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
+    });
+    logger.verbose(`GitHub CLI auth status: ${authStatus}`);
+    logger.info("GitHub CLI authenticated successfully with user PAT");
   } catch (error) {
     logger.info(`Failed to configure GitHub CLI authentication: ${error instanceof Error ? error.message : String(error)}`);
   }

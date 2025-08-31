@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       test_type:
-        description: 'Test type to run'
+        description: "Test type to run"
         required: false
-        default: 'all'
+        default: "all"
         type: choice
         options:
           - all
@@ -21,30 +21,30 @@ on:
           - performance
 
 env:
-  NODE_VERSION: '20'
-  BUN_VERSION: 'latest'
+  NODE_VERSION: "20"
+  BUN_VERSION: "latest"
 
 jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'unit' || github.event_name != 'workflow_dispatch' }}
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      
+
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      
+
       - name: Install dependencies
         run: bun install
-      
+
       - name: Run unit tests
         run: bun test --coverage tests/*.test.ts
-      
+
       - name: Check coverage threshold
         run: |
           COVERAGE=$(bun test --coverage tests/*.test.ts | grep "All files" | awk '{print $10}' | sed 's/%//')
@@ -53,7 +53,7 @@ jobs:
             echo "Coverage is below 80% threshold"
             exit 1
           fi
-      
+
       - name: Upload coverage reports
         uses: actions/upload-artifact@v3
         with:
@@ -64,25 +64,25 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'integration' || github.event_name != 'workflow_dispatch' }}
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      
+
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      
+
       - name: Install dependencies
         run: bun install
-      
+
       - name: Set up test environment
         run: |
           echo "GITHUB_ACTIONS=false" >> $GITHUB_ENV
           echo "CI=false" >> $GITHUB_ENV
           echo "ACCESS_MODE=read-only" >> $GITHUB_ENV
-      
+
       - name: Run integration tests
         run: bun test tests/claude-integration.test.ts
         env:
@@ -93,25 +93,25 @@ jobs:
     name: Security Tests
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'security' || github.event_name != 'workflow_dispatch' }}
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      
+
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      
+
       - name: Install dependencies
         run: bun install
-      
+
       - name: Run security tests
         run: bun test tests/security.test.ts
-      
+
       - name: Run dependency audit
         run: bun audit
-      
+
       - name: Run SAST scan
         uses: github/super-linter@v5
         env:
@@ -119,7 +119,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_JAVASCRIPT_ES: true
           VALIDATE_TYPESCRIPT_ES: true
-      
+
       - name: Check for secrets
         run: |
           # Check for hardcoded secrets
@@ -136,28 +136,28 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'e2e' }}
-    
+
     strategy:
       matrix:
         platform: [github, telegram]
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      
+
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      
+
       - name: Install dependencies
         run: bun install
-      
+
       - name: Set up test environment
         run: |
           echo "GITHUB_ACTIONS=false" >> $GITHUB_ENV
           echo "CI=false" >> $GITHUB_ENV
-      
+
       - name: Run ${{ matrix.platform }} E2E tests
         run: bun test tests/e2e/${{ matrix.platform }}.e2e.test.ts
         env:
@@ -171,31 +171,31 @@ jobs:
     name: Performance Tests
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'performance' }}
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      
+
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      
+
       - name: Install dependencies
         run: bun install
-      
+
       - name: Run performance tests
         run: |
           # Run with increased memory for performance tests
           NODE_OPTIONS="--max-old-space-size=4096" bun test tests/performance.test.ts
-      
+
       - name: Generate performance report
         run: |
           echo "## Performance Test Results" > performance-report.md
           echo "Date: $(date)" >> performance-report.md
           echo "Commit: ${{ github.sha }}" >> performance-report.md
           # Add actual metrics from test output
-      
+
       - name: Upload performance report
         uses: actions/upload-artifact@v3
         with:
@@ -207,7 +207,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests, security-tests, e2e-tests, performance-tests]
     if: always()
-    
+
     steps:
       - name: Check test results
         run: |
@@ -217,7 +217,7 @@ jobs:
           echo "Security Tests: ${{ needs.security-tests.result }}" >> summary.md
           echo "E2E Tests: ${{ needs.e2e-tests.result }}" >> summary.md
           echo "Performance Tests: ${{ needs.performance-tests.result }}" >> summary.md
-          
+
           # Fail if any test failed
           if [[ "${{ needs.unit-tests.result }}" == "failure" ]] || \
              [[ "${{ needs.integration-tests.result }}" == "failure" ]] || \
@@ -227,7 +227,7 @@ jobs:
             echo "One or more test suites failed"
             exit 1
           fi
-      
+
       - name: Post results to PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
@@ -235,7 +235,7 @@ jobs:
           script: |
             const fs = require('fs');
             const summary = fs.readFileSync('summary.md', 'utf8');
-            
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,

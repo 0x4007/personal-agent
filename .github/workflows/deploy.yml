@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Deployment environment'
+        description: "Deployment environment"
         required: true
-        default: 'production'
+        default: "production"
         type: choice
         options:
           - production
@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -29,7 +29,7 @@ jobs:
       - run: bun install
       - run: bun test
       - run: bun run test:security || echo "Security tests not yet implemented"
-      
+
   deploy-worker:
     needs: test
     runs-on: ubuntu-latest
@@ -45,7 +45,7 @@ jobs:
         run: |
           bun install
           bun run deploy
-          
+
   deploy-mcp:
     needs: test
     runs-on: ubuntu-latest
@@ -64,7 +64,7 @@ jobs:
           else
             echo "MCP servers not yet implemented"
           fi
-          
+
   smoke-test:
     needs: [deploy-worker, deploy-mcp]
     runs-on: ubuntu-latest
@@ -77,7 +77,7 @@ jobs:
       - name: Run smoke tests
         run: |
           bun run test:smoke || echo "Smoke tests not yet implemented"
-          
+
   notify:
     needs: smoke-test
     runs-on: ubuntu-latest

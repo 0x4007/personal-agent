@@ -127,8 +127,8 @@ jobs:
       KERNEL_PUBLIC_KEY: ${{ secrets.KERNEL_PUBLIC_KEY }}
       LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
       AGENT_OWNER: ${{ github.repository_owner }}
-      GITHUB_PAT: ${{ secrets.GITHUB_PAT_READ }}  # READ-ONLY PAT
-      USER_PAT: ${{ secrets.USER_PAT_READ }}  # Backwards compatibility
+      GITHUB_PAT: ${{ secrets.GITHUB_PAT_READ }} # READ-ONLY PAT
+      USER_PAT: ${{ secrets.USER_PAT_READ }} # Backwards compatibility
       ACCESS_MODE: "read-only"
 
     steps:
@@ -143,7 +143,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install Claude CLI
         run: |
@@ -182,8 +182,8 @@ jobs:
       KERNEL_PUBLIC_KEY: ${{ secrets.KERNEL_PUBLIC_KEY }}
       LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
       AGENT_OWNER: ${{ github.repository_owner }}
-      GITHUB_PAT: ${{ secrets.GITHUB_PAT_FULL }}  # FULL ACCESS PAT
-      USER_PAT: ${{ secrets.USER_PAT_FULL }}  # Backwards compatibility
+      GITHUB_PAT: ${{ secrets.GITHUB_PAT_FULL }} # FULL ACCESS PAT
+      USER_PAT: ${{ secrets.USER_PAT_FULL }} # Backwards compatibility
       ACCESS_MODE: "full"
 
     steps:
@@ -198,7 +198,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install Claude CLI
         run: |

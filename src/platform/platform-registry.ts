@@ -17,30 +17,36 @@ export interface PlatformConfig {
 
 export class PlatformRegistry {
   private static registry: Map<string, PlatformConfig> = new Map([
-    ['github', {
-      name: 'GitHub',
-      formatter: new GitHubFormatter(),
-      tools: ['gh', 'git', 'shell'],
-      credentialEnvVar: 'GITHUB_PAT',
-      features: {
-        supportsMarkdown: true,
-        supportsCodeBlocks: true,
-        supportsInlineImages: true,
-        maxMessageLength: 65536
-      }
-    }],
-    ['telegram', {
-      name: 'Telegram',
-      formatter: new TelegramFormatter(),
-      tools: ['telegram-mcp', 'shell'],
-      credentialEnvVar: 'TELEGRAM_BOT_TOKEN',
-      features: {
-        supportsMarkdown: true,
-        supportsCodeBlocks: true,
-        supportsInlineImages: false,
-        maxMessageLength: 4096
-      }
-    }]
+    [
+      "github",
+      {
+        name: "GitHub",
+        formatter: new GitHubFormatter(),
+        tools: ["gh", "git", "shell"],
+        credentialEnvVar: "GITHUB_PAT",
+        features: {
+          supportsMarkdown: true,
+          supportsCodeBlocks: true,
+          supportsInlineImages: true,
+          maxMessageLength: 65536,
+        },
+      },
+    ],
+    [
+      "telegram",
+      {
+        name: "Telegram",
+        formatter: new TelegramFormatter(),
+        tools: ["telegram-mcp", "shell"],
+        credentialEnvVar: "TELEGRAM_BOT_TOKEN",
+        features: {
+          supportsMarkdown: true,
+          supportsCodeBlocks: true,
+          supportsInlineImages: false,
+          maxMessageLength: 4096,
+        },
+      },
+    ],
   ]);
 
   static getPlatform(platformId: string): PlatformConfig | undefined {
@@ -66,7 +72,7 @@ export class PlatformRegistry {
 
   static getTools(platformId: string): string[] {
     const platform = this.getPlatform(platformId);
-    return platform?.tools || ['shell'];
+    return platform?.tools || ["shell"];
   }
 
   static getCredentialEnvVar(platformId: string): string | undefined {
@@ -74,7 +80,7 @@ export class PlatformRegistry {
     return platform?.credentialEnvVar;
   }
 
-  static getFeatures(platformId: string): PlatformConfig['features'] | undefined {
+  static getFeatures(platformId: string): PlatformConfig["features"] | undefined {
     const platform = this.getPlatform(platformId);
     return platform?.features;
   }

@@ -1,10 +1,13 @@
 # Personal Agent - Universal Automation Platform
 
 ## Project Vision
+
 A generalized personal agent that acts as a digital assistant with full access to command-line tools and platform APIs. The agent operates with the user's credentials across multiple platforms, providing a unified automation interface through natural language commands.
 
 ## Core Concept
+
 The Personal Agent is designed to be a universal automation system where:
+
 - Users provide their access keys and credentials for various platforms
 - The agent has full shell access to execute any command-line tool
 - It can authenticate and act on behalf of the user across any platform
@@ -16,6 +19,7 @@ The Personal Agent is designed to be a universal automation system where:
 This project leverages the Claude Code Action as its foundation, extending it to become a multi-platform automation agent.
 
 ### Key Components
+
 - **Execution Environment**: GitHub Actions (provides compute and shell access)
 - **AI Core**: Claude Code Action (submodule integration)
 - **Event Router**: UbiquityOS (captures events from multiple platforms)
@@ -28,6 +32,7 @@ This project leverages the Claude Code Action as its foundation, extending it to
 ### Essential Features to Retain
 
 1. **Access Control System**
+
    - Two access modes via Personal Access Tokens (PATs):
      - **Admin Mode**: Full write access PAT for trusted operations
      - **Read-Only Mode**: Limited PAT that anyone can invoke for read-only operations
@@ -35,6 +40,7 @@ This project leverages the Claude Code Action as its foundation, extending it to
    - Security is handled at the PAT level, not through command filtering
 
 2. **Error Handling & Retry Logic**
+
    - Retry mechanism for handling 500 errors from API
    - Exponential backoff strategy for retries (max 3 attempts)
    - Fallback to simplified prompts when complex requests fail
@@ -52,25 +58,27 @@ The agent uses a generalized `EventContext` interface that can adapt to events f
 
 ```typescript
 interface EventContext {
-  platform: string;                // e.g., "github", "telegram", "discord"
-  eventType: string;              // e.g., "issue_comment", "message", "command"
-  source?: string;                // e.g., "owner/repo", "chat_id", "channel_id"
-  repository?: string;            // GitHub-specific: "owner/repo"
+  platform: string; // e.g., "github", "telegram", "discord"
+  eventType: string; // e.g., "issue_comment", "message", "command"
+  source?: string; // e.g., "owner/repo", "chat_id", "channel_id"
+  repository?: string; // GitHub-specific: "owner/repo"
   issueNumber?: string;
   pullRequestNumber?: string;
   author: string;
   command: string;
-  metadata?: {                     // Platform-specific metadata
-    chatId?: string;              // Telegram
-    messageId?: string;           // Various platforms
-    channelId?: string;           // Discord/Slack
+  metadata?: {
+    // Platform-specific metadata
+    chatId?: string; // Telegram
+    messageId?: string; // Various platforms
+    channelId?: string; // Discord/Slack
     [key: string]: any;
   };
-  [key: string]: string | number | object | undefined;  // Extensible for any event data
+  [key: string]: string | number | object | undefined; // Extensible for any event data
 }
 ```
 
 This structure is critical for informing Claude about:
+
 - Which platform the event originated from
 - What MCP tools might be relevant (e.g., Telegram MCP for Telegram events)
 - How to format and deliver responses appropriately
@@ -78,6 +86,7 @@ This structure is critical for informing Claude about:
 ### Prompt Generation
 
 The prompt builder is platform-agnostic and dynamically formats context based on the provided event data. It:
+
 - Adapts to events from any platform (GitHub, Telegram, Discord, etc.)
 - Includes full EventContext to inform Claude about the event source
 - Clearly communicates access level (read-only vs full)
@@ -99,16 +108,19 @@ The prompt builder is platform-agnostic and dynamically formats context based on
 ## Development Guidelines
 
 ### Testing
+
 ```bash
 bun run test
 ```
 
 ### Local Development
+
 ```bash
 bun run worker  # Starts Wrangler dev server on port 4000
 ```
 
 ### Code Structure
+
 - `/src/handlers/` - Event handlers for different commands
 - `/src/handlers/claude-agent.ts` - Main Claude CLI integration
 - `/src/types/` - TypeScript type definitions
@@ -117,6 +129,7 @@ bun run worker  # Starts Wrangler dev server on port 4000
 - `/tests/` - Jest test suite with mocks
 
 ### Environment Variables
+
 - `USER_PAT` - GitHub Personal Access Token (stored in GitHub Actions secrets)
 - `CLAUDE_CODE_OAUTH_TOKEN` - Claude authentication token for CLI integration
 - `ACCESS_MODE` - Set to "read-only" for limited access mode
@@ -149,6 +162,7 @@ bun run worker  # Starts Wrangler dev server on port 4000
 - **Execution**: GitHub Actions provides compute and shell environment
 
 ### GitHub Actions Execution
+
 - **Entry Point**: `dist/index.js` (bundled action)
 - **Build Command**: `bun build-action.js` (uses @vercel/ncc to bundle)
 - **Workflow**: `.github/workflows/compute.yml`
@@ -169,6 +183,7 @@ bun run worker  # Starts Wrangler dev server on port 4000
 ### Bridge Communication
 
 The UbiquityOS Bridge handles:
+
 - Capturing events from multiple platforms (GitHub, Telegram, Discord, etc.)
 - Routing username mentions to correct agent instances
 - Forwarding event payloads with full EventContext
@@ -190,18 +205,21 @@ The UbiquityOS Bridge handles:
 ## Integration Roadmap
 
 ### Phase 1: Claude Code Action Integration
+
 - Adopt Claude Code Action as submodule
 - Modify to accept generalized EventContext
 - Ensure platform field drives MCP tool selection
 - Maintain all existing security features
 
 ### Phase 2: Multi-Platform Support
+
 - Extend EventContext for platform-specific metadata
 - Implement Telegram Bot API integration
 - Add Google Drive integration for file operations
 - Ensure consistent response formatting per platform
 
 ### Phase 3: Enhanced Capabilities
+
 - Add more MCP servers for additional platforms
 - Implement cross-platform workflows
 - Enable agent-to-agent communication
@@ -212,37 +230,36 @@ The UbiquityOS Bridge handles:
 Detailed implementation has been broken down into 5 sprints located in `/docs/sprints/`:
 
 ### Active Sprints
+
 1. **Sprint 1: Core Claude Integration** (`sprint-1-core-integration.md`)
    - Submodule integration at `reference/claude-code-action/`
    - EventContext adapter implementation
    - Preserve CI spoofing, retry logic, and access control
-   
 2. **Sprint 2: Platform Abstraction** (`sprint-2-platform-abstraction.md`)
    - Remove GitHub-specific assumptions from core
    - Multi-platform credential management (rename `USER_PAT` to `GITHUB_PAT`)
    - Platform-specific response formatters
-   
 3. **Sprint 3: Telegram MCP** (`sprint-3-telegram-mcp.md`)
    - Full Telegram Bot API integration
    - Message formatting (MarkdownV2)
    - Interactive features (inline keyboards)
-   
 4. **Sprint 4: Testing & Security** (`sprint-4-testing-security.md`)
    - Comprehensive test coverage (>80%)
    - Security validation and penetration testing
    - Monitoring and observability setup
-   
 5. **Sprint 5: Production Deployment** (`sprint-5-deployment.md`)
    - CI/CD pipeline configuration
    - Documentation and runbooks
    - Production deployment procedures
 
 ### Product Backlog
+
 See `docs/sprints/product-backlog.md` for future enhancements including Discord/Slack integration, agent-to-agent communication, and more.
 
 ## Critical Implementation Requirements
 
 ### NEVER REMOVE OR MODIFY
+
 1. **CI Environment Spoofing**: The `GITHUB_ACTIONS=false` and `CI=false` environment variables are CRITICAL. Without these, Claude will refuse to execute shell commands in GitHub Actions.
 
 2. **Access Control via PAT**: Security is handled ENTIRELY through PAT permissions. Do NOT add command filtering or sanitization at the code level.
@@ -250,7 +267,9 @@ See `docs/sprints/product-backlog.md` for future enhancements including Discord/
 3. **Retry Logic**: The exponential backoff retry mechanism (max 3 attempts) for API errors is battle-tested and essential.
 
 ### Platform Integration Checklist
+
 When adding a new platform:
+
 - [ ] Create platform adapter in `/src/adapters/`
 - [ ] Add credential environment variable (e.g., `TELEGRAM_BOT_TOKEN`)
 - [ ] Implement response formatter in `/src/formatters/`
@@ -260,7 +279,9 @@ When adding a new platform:
 - [ ] Test with real platform events (not just simulated)
 
 ### EventContext Requirements
+
 The EventContext must ALWAYS include:
+
 - `platform`: Platform identifier (required)
 - `eventType`: Type of event
 - `author`: Who triggered the event
@@ -272,9 +293,10 @@ The EventContext must ALWAYS include:
 ### ❌ DO NOT Create Test Theater
 
 **What NOT to do:**
+
 ```typescript
 // WRONG: Fake test that always passes
-test('Agent responds to issue comment', async () => {
+test("Agent responds to issue comment", async () => {
   const response = await processGitHubEvent(event);
   expect(response.success).toBe(true); // This always returns true!
 });
@@ -286,17 +308,19 @@ async function processGitHubEvent(event) {
 ```
 
 **What TO do:**
+
 ```typescript
 // RIGHT: Test actual critical functionality
-test('CI spoofing prevents restricted mode', () => {
+test("CI spoofing prevents restricted mode", () => {
   spoofCIEnvironment();
-  expect(process.env.GITHUB_ACTIONS).toBe('false'); // Actually prevents Claude restrictions
+  expect(process.env.GITHUB_ACTIONS).toBe("false"); // Actually prevents Claude restrictions
 });
 ```
 
 ### ❌ DO NOT Over-Engineer Abstractions
 
 **What NOT to do:**
+
 ```typescript
 // WRONG: 280-line prompt builder that's never used
 export class PlatformAgnosticPromptBuilder {
@@ -312,6 +336,7 @@ function buildPrompt(context) {
 ```
 
 **What TO do:**
+
 ```typescript
 // RIGHT: Simple, direct implementation that works
 function buildPrompt(context: EventContext): string {
@@ -322,15 +347,20 @@ function buildPrompt(context: EventContext): string {
 ### ❌ DO NOT Create Placeholder Implementations
 
 **What NOT to do:**
+
 ```typescript
 // WRONG: Placeholder that pretends to work
-['discord', {
-  formatter: new GitHubFormatter(), // Using wrong formatter as placeholder!
-  tools: ['discord-mcp'],           // Tool doesn't exist!
-}]
+[
+  "discord",
+  {
+    formatter: new GitHubFormatter(), // Using wrong formatter as placeholder!
+    tools: ["discord-mcp"], // Tool doesn't exist!
+  },
+];
 ```
 
 **What TO do:**
+
 ```typescript
 // RIGHT: Only implement what actually exists
 // Don't add Discord until Discord is actually implemented
@@ -339,12 +369,14 @@ function buildPrompt(context: EventContext): string {
 ### ❌ DO NOT Commit Generated Files
 
 **What NOT to do:**
+
 ```
 src/handler.ts    # Source file
 src/handler.js    # Generated file - DON'T COMMIT THIS!
 ```
 
 **What TO do:**
+
 ```bash
 # Add to .gitignore
 *.js
@@ -355,20 +387,22 @@ dist/
 ### ❌ DO NOT Write Tests for Trivial Assignments
 
 **What NOT to do:**
+
 ```typescript
 // WRONG: Testing object property assignment
-test('sets platform correctly', () => {
-  const context = { platform: 'github' };
-  expect(context.platform).toBe('github'); // Duh!
+test("sets platform correctly", () => {
+  const context = { platform: "github" };
+  expect(context.platform).toBe("github"); // Duh!
 });
 ```
 
 **What TO do:**
+
 ```typescript
 // RIGHT: Test business logic and edge cases
-test('escapes Telegram MarkdownV2 special characters', () => {
-  const result = formatter.format('Hello_world[test]');
-  expect(result).toBe('Hello\\_world\\[test\\]'); // Prevents production errors
+test("escapes Telegram MarkdownV2 special characters", () => {
+  const result = formatter.format("Hello_world[test]");
+  expect(result).toBe("Hello\\_world\\[test\\]"); // Prevents production errors
 });
 ```
 
@@ -377,16 +411,19 @@ test('escapes Telegram MarkdownV2 special characters', () => {
 ### ✅ Keep It Simple and Direct
 
 1. **Start with the simplest working implementation**
+
    - Get it working first, abstract later (if needed)
    - Most systems need <1000 lines of actual code
 
 2. **Only test what can actually break**
+
    - Security boundaries (access control)
    - Critical workarounds (CI spoofing)
    - Data transformations that prevent errors (escaping, formatting)
    - Retry logic and error handling
 
 3. **Delete aggressively**
+
    - If a file isn't imported anywhere, delete it
    - If a test uses mocks with hardcoded responses, delete it
    - If documentation duplicates what's in code comments, delete it
@@ -398,6 +435,7 @@ test('escapes Telegram MarkdownV2 special characters', () => {
 ### Example of Good vs Bad Implementation
 
 **BAD (Over-engineered):**
+
 - 5000+ lines of code
 - 65% fake tests
 - Multiple abstraction layers
@@ -405,6 +443,7 @@ test('escapes Telegram MarkdownV2 special characters', () => {
 - Generated files committed
 
 **GOOD (Minimal, working):**
+
 - ~500 lines of actual functionality
 - Tests only for critical paths
 - Direct implementations
@@ -412,7 +451,9 @@ test('escapes Telegram MarkdownV2 special characters', () => {
 - Clean repository
 
 ### Testing Requirements (Revised)
+
 Before deployment:
+
 - [ ] CI spoofing verified working (CRITICAL)
 - [ ] PAT access control tested with real tokens
 - [ ] Error retry logic tested with real failures

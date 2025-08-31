@@ -7,7 +7,7 @@ describe("CredentialManager", () => {
         GITHUB_PAT: "github-token-123",
       };
       const manager = new CredentialManager(env);
-      
+
       expect(manager.hasCredential("github")).toBe(true);
       expect(manager.getCredential("github")).toBe("github-token-123");
     });
@@ -17,7 +17,7 @@ describe("CredentialManager", () => {
         USER_PAT: "user-pat-123",
       };
       const manager = new CredentialManager(env);
-      
+
       expect(manager.hasCredential("github")).toBe(true);
       expect(manager.getCredential("github")).toBe("user-pat-123");
     });
@@ -28,7 +28,7 @@ describe("CredentialManager", () => {
         USER_PAT: "user-pat-123",
       };
       const manager = new CredentialManager(env);
-      
+
       expect(manager.getCredential("github")).toBe("github-token-123");
     });
 
@@ -37,7 +37,7 @@ describe("CredentialManager", () => {
         TELEGRAM_BOT_TOKEN: "telegram-token-123",
       };
       const manager = new CredentialManager(env);
-      
+
       expect(manager.hasCredential("telegram")).toBe(true);
       expect(manager.getCredential("telegram")).toBe("telegram-token-123");
     });
@@ -45,7 +45,7 @@ describe("CredentialManager", () => {
     it("should handle missing credentials", () => {
       const env = {};
       const manager = new CredentialManager(env);
-      
+
       expect(manager.hasCredential("github")).toBe(false);
       expect(manager.getCredential("github")).toBeUndefined();
     });
@@ -55,7 +55,7 @@ describe("CredentialManager", () => {
         GITHUB_PAT: "",
       };
       const manager = new CredentialManager(env);
-      
+
       expect(manager.hasCredential("github")).toBe(false);
     });
   });
@@ -67,7 +67,7 @@ describe("CredentialManager", () => {
         TELEGRAM_BOT_TOKEN: "telegram-token",
       };
       const manager = new CredentialManager(env);
-      
+
       const available = manager.getAvailablePlatforms();
       expect(available).toContain("github");
       expect(available).toContain("telegram");
@@ -76,7 +76,7 @@ describe("CredentialManager", () => {
     it("should return empty array when no credentials are available", () => {
       const env = {};
       const manager = new CredentialManager(env);
-      
+
       const available = manager.getAvailablePlatforms();
       expect(available).toEqual([]);
     });
@@ -89,7 +89,7 @@ describe("CredentialManager", () => {
         TELEGRAM_BOT_TOKEN: "telegram-token",
       };
       const manager = new CredentialManager(env);
-      
+
       const status = manager.getAuthenticationStatus();
       expect(status.github).toBe(true);
       expect(status.telegram).toBe(true);
@@ -102,7 +102,7 @@ describe("CredentialManager", () => {
         GITHUB_PAT: "github-token",
       };
       const manager = new CredentialManager(env);
-      
+
       const result = manager.validatePlatformCredentials("github");
       expect(result.valid).toBe(true);
       expect(result.message).toBeUndefined();
@@ -111,7 +111,7 @@ describe("CredentialManager", () => {
     it("should provide error message for missing credentials", () => {
       const env = {};
       const manager = new CredentialManager(env);
-      
+
       const result = manager.validatePlatformCredentials("github");
       expect(result.valid).toBe(false);
       expect(result.message).toContain("GITHUB_PAT");
@@ -120,7 +120,7 @@ describe("CredentialManager", () => {
     it("should provide correct env var name in error message", () => {
       const env = {};
       const manager = new CredentialManager(env);
-      
+
       const telegramResult = manager.validatePlatformCredentials("telegram");
       expect(telegramResult.message).toContain("TELEGRAM_BOT_TOKEN");
     });
