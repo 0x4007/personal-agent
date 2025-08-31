@@ -50,6 +50,14 @@ bun run worker  # Starts Wrangler dev server on port 4000
 - **Permissions**: Agent operates with user's permissions via PAT
 - **Error Handling**: Always provide clear error messages to users
 
+### CRITICAL: Security Model
+- **DO NOT implement "safe command filters" or command sanitization**
+- **Security is handled ENTIRELY through PAT permissions**
+- **If the PAT allows it, execute it. If the PAT doesn't allow it, it will fail naturally**
+- **The dual PAT system (read-only vs full) is the ONLY security layer needed**
+- **External users get read-only PAT, owner gets full PAT - that's the entire security model**
+- **Stop adding unnecessary command filtering - just execute what Claude generates**
+
 ### Current Features
 - `@username [command]` - Processes commands using Claude CLI for intelligent responses
 - Workflow dispatch testing with default payloads

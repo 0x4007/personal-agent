@@ -12,21 +12,10 @@ export interface ExecutionSummary {
   summary: string;
 }
 
-export function executeGitCommands(
-  commands: string[],
-  logger: { info: (msg: string) => void; error: (msg: string) => void },
-  isReadOnly: boolean
-): ExecutionSummary {
+export function executeGitCommands(commands: string[], logger: { info: (msg: string) => void; error: (msg: string) => void }): ExecutionSummary {
   const results: CommandResult[] = [];
 
-  if (isReadOnly) {
-    logger.info("Read-only mode: Skipping all git operations");
-    return {
-      results: [],
-      summary: "⚠️ Read-only access: Cannot execute git operations. Please contact the repository owner to perform write operations.",
-    };
-  }
-
+  // Just execute everything - PAT permissions handle all security
   for (const cmd of commands) {
     logger.info(`Executing: ${cmd}`);
 
@@ -87,35 +76,4 @@ function formatExecutionSummary(results: CommandResult[]): string {
   return sections.join("\n\n");
 }
 
-export function sanitizeCommand(cmd: string): string {
-  // Basic command sanitization to prevent shell injection
-  // Remove dangerous characters and patterns
-  return cmd
-    .replace(/[;&|<>$`\\]/g, "") // Remove shell metacharacters
-    .replace(/\.\./g, "") // Remove directory traversal
-    .trim();
-}
-
-export function isGitCommand(cmd: string): boolean {
-  // Check if command is a git or gh operation
-  const gitCommands = ["git", "gh"];
-  const trimmedCmd = cmd.trim().toLowerCase();
-
-  return gitCommands.some((prefix) => trimmedCmd.startsWith(prefix + " ") || trimmedCmd === prefix);
-}
-
-export function filterSafeCommands(commands: string[]): string[] {
-  // Filter to only allow safe git/gh operations
-  const safePatterns = [
-    /^git\s+(status|log|diff|branch|checkout|add|commit|push|pull|fetch|remote|config)/i,
-    /^gh\s+(pr|issue|repo|api|workflow|release|auth\s+status)/i,
-    /^echo\s+/i, // Allow echo for debugging
-    /^pwd$/i, // Allow pwd for debugging
-    /^ls\s+/i, // Allow ls for file verification
-  ];
-
-  return commands.filter((cmd) => {
-    const trimmedCmd = cmd.trim();
-    return safePatterns.some((pattern) => pattern.test(trimmedCmd));
-  });
-}
+// Remove all filtering - PAT permissions handle security
