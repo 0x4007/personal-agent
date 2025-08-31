@@ -22,6 +22,7 @@ describe("GitHubAdapter", () => {
         },
         repository: {
           name: "repo",
+          full_name: "owner/repo",
           owner: {
             login: "owner",
           },
@@ -50,18 +51,28 @@ describe("GitHubAdapter", () => {
       const payload = {
         issue: {
           number: 1,
+          title: "Test Issue",
+          state: "open",
         },
         comment: {
+          id: 12345,
           body: "test comment",
+          html_url: "https://github.com/owner/repo/issues/1#issuecomment-12345",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
           user: {
             login: "fallback-user",
           },
         },
         repository: {
           name: "repo",
+          full_name: "owner/repo",
           owner: {
             login: "owner",
           },
+        },
+        sender: {
+          login: "sender",
         },
       };
 
@@ -90,9 +101,13 @@ describe("GitHubAdapter", () => {
           html_url: "https://github.com/owner/repo/pull/100#issuecomment-54321",
           created_at: "2024-01-02T00:00:00Z",
           updated_at: "2024-01-02T00:00:00Z",
+          user: {
+            login: "pr-author",
+          },
         },
         repository: {
           name: "repo",
+          full_name: "owner/repo",
           owner: {
             login: "owner",
           },
@@ -123,6 +138,7 @@ describe("GitHubAdapter", () => {
         after: "def456",
         repository: {
           name: "repo",
+          full_name: "owner/repo",
           owner: {
             login: "owner",
           },
@@ -131,7 +147,11 @@ describe("GitHubAdapter", () => {
           name: "developer",
         },
         head_commit: {
+          id: "commit123",
           message: "feat: add new feature",
+          author: {
+            name: "developer",
+          },
         },
         commits: [
           {
@@ -169,7 +189,7 @@ describe("GitHubAdapter", () => {
       const issuePayload = {
         issue: { number: 1 },
         comment: { body: "test" },
-        repository: { name: "repo", owner: { login: "owner" } },
+        repository: { name: "repo", full_name: "owner/repo", owner: { login: "owner" } },
         sender: { login: "user" },
       };
 
@@ -180,7 +200,11 @@ describe("GitHubAdapter", () => {
     it("should handle unknown events with fallback", () => {
       const unknownPayload = {
         repository: {
+          name: "repo",
           full_name: "owner/repo",
+          owner: {
+            login: "owner",
+          },
         },
         sender: {
           login: "user",

@@ -5,7 +5,7 @@ export interface Tool {
 }
 
 export class ToolRegistry {
-  private static commonTools: Tool[] = [
+  private static _commonTools: Tool[] = [
     {
       name: "shell",
       description: "Execute shell commands",
@@ -18,7 +18,7 @@ export class ToolRegistry {
     },
   ];
 
-  private static platformTools: Map<string, Tool[]> = new Map([
+  private static _platformTools: Map<string, Tool[]> = new Map([
     [
       "github",
       [
@@ -50,8 +50,8 @@ export class ToolRegistry {
    * Get available tools for a specific platform
    */
   static getToolsForPlatform(platform: string): Tool[] {
-    const platformSpecific = this.platformTools.get(platform.toLowerCase()) || [];
-    return [...this.commonTools, ...platformSpecific];
+    const platformSpecific = this._platformTools.get(platform.toLowerCase()) || [];
+    return [...this._commonTools, ...platformSpecific];
   }
 
   /**
@@ -84,11 +84,11 @@ export class ToolRegistry {
    */
   static registerTool(platform: string, tool: Tool): void {
     const platformLower = platform.toLowerCase();
-    if (!this.platformTools.has(platformLower)) {
-      this.platformTools.set(platformLower, []);
+    if (!this._platformTools.has(platformLower)) {
+      this._platformTools.set(platformLower, []);
     }
-    const tools = this.platformTools.get(platformLower)!;
-    if (!tools.some((t) => t.name === tool.name)) {
+    const tools = this._platformTools.get(platformLower);
+    if (tools && !tools.some((t) => t.name === tool.name)) {
       tools.push(tool);
     }
   }

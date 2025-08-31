@@ -1,9 +1,8 @@
-import { describe, test, expect, beforeEach, jest } from "@jest/globals";
+import { describe, test, expect } from "@jest/globals";
 
 describe("Security Controls", () => {
   describe("CI Environment Spoofing", () => {
     test("GITHUB_ACTIONS is set to false", () => {
-      const env = process.env;
       process.env.GITHUB_ACTIONS = "false";
       process.env.CI = "false";
 

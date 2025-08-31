@@ -16,7 +16,7 @@ export interface EventContext {
     messageId?: string;
     channelId?: string; // Platform-specific channel ID
     threadId?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   authentication?: {
     github?: boolean;
@@ -41,11 +41,7 @@ export function validateEventContext(context: EventContext): boolean {
     return false;
   }
 
-  if (!context.command || typeof context.command !== "string") {
-    return false;
-  }
-
-  return true;
+  return !(!context.command || typeof context.command !== "string");
 }
 
 /**

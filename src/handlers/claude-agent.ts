@@ -306,11 +306,13 @@ async function executeClaudeCommandInternal(
 
 async function configureGitHubAuth(token: string, logger: { info: (msg: string) => void; verbose: (msg: string) => void }): Promise<void> {
   try {
+    // eslint-disable-next-line sonarjs/os-command
     execSync(`echo "${token}" | gh auth login --with-token`, {
       stdio: "ignore",
       env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
     });
 
+    // eslint-disable-next-line sonarjs/no-os-command-from-path
     const authStatus = execSync("gh auth status", {
       encoding: "utf8",
       env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },

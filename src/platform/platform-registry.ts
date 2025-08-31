@@ -16,7 +16,7 @@ export interface PlatformConfig {
 }
 
 export class PlatformRegistry {
-  private static registry: Map<string, PlatformConfig> = new Map([
+  private static _registry: Map<string, PlatformConfig> = new Map([
     [
       "github",
       {
@@ -50,15 +50,15 @@ export class PlatformRegistry {
   ]);
 
   static getPlatform(platformId: string): PlatformConfig | undefined {
-    return this.registry.get(platformId.toLowerCase());
+    return this._registry.get(platformId.toLowerCase());
   }
 
   static getAllPlatforms(): string[] {
-    return Array.from(this.registry.keys());
+    return Array.from(this._registry.keys());
   }
 
   static registerPlatform(platformId: string, config: PlatformConfig): void {
-    this.registry.set(platformId.toLowerCase(), config);
+    this._registry.set(platformId.toLowerCase(), config);
   }
 
   static getFormatter(platformId: string): ResponseFormatter {

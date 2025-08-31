@@ -86,7 +86,7 @@ export interface EventContext {
     fallbackUsed?: boolean;
 
     // Extensible for any platform
-    [key: string]: any;
+    [key: string]: unknown;
   };
 
   /**
@@ -110,39 +110,4 @@ export interface EventContext {
    * Allows platforms to add custom fields without breaking the interface
    */
   [key: string]: string | number | object | boolean | undefined;
-}
-
-/**
- * Response context for formatting responses appropriately per platform
- */
-export interface ResponseContext {
-  /**
-   * Target platform for the response
-   */
-  platform: string;
-
-  /**
-   * Format to use for the response
-   */
-  format: "markdown" | "MarkdownV2" | "html" | "plain";
-
-  /**
-   * Maximum message length for the platform
-   */
-  maxLength?: number;
-
-  /**
-   * Whether the platform supports inline keyboards/buttons
-   */
-  supportsInteractive?: boolean;
-
-  /**
-   * Whether the platform supports media/file uploads
-   */
-  supportsMedia?: boolean;
-
-  /**
-   * Platform-specific formatting options
-   */
-  options?: Record<string, any>;
 }

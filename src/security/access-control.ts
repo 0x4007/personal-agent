@@ -39,7 +39,7 @@ export function getAccessMode(): AccessMode {
 /**
  * Gets the appropriate PAT for the given platform
  */
-export function getPlatformPAT(platform: string): string | undefined {
+export function getPlatformPat(platform: string): string | undefined {
   switch (platform) {
     case "github":
       return process.env.GITHUB_PAT || process.env.USER_PAT;
@@ -54,7 +54,7 @@ export function getPlatformPAT(platform: string): string | undefined {
  * Validates that required credentials are present for a platform
  */
 export function validatePlatformCredentials(platform: string): boolean {
-  const pat = getPlatformPAT(platform);
+  const pat = getPlatformPat(platform);
 
   if (!pat) {
     console.error(`Missing credentials for platform: ${platform}`);
@@ -70,25 +70,7 @@ export function validatePlatformCredentials(platform: string): boolean {
 export function getAccessControlConfig(platform: string): AccessControlConfig {
   return {
     mode: getAccessMode(),
-    pat: getPlatformPAT(platform),
+    pat: getPlatformPat(platform),
     platform,
   };
-}
-
-/**
- * Logs current access control configuration
- */
-export function logAccessControl(config: AccessControlConfig): void {
-  console.log("Access Control Configuration:");
-  console.log(`  Platform: ${config.platform}`);
-  console.log(`  Mode: ${config.mode}`);
-  console.log(`  PAT Present: ${!!config.pat}`);
-
-  if (config.mode === AccessMode.READ_ONLY) {
-    console.log("  ⚠️  Running in READ-ONLY mode");
-    console.log("  Claude will not be able to make changes");
-  } else {
-    console.log("  ✓ Running in FULL ACCESS mode");
-    console.log("  Claude can perform write operations");
-  }
 }

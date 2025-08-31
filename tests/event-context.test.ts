@@ -1,24 +1,9 @@
-import { describe, test, expect, beforeEach } from "@jest/globals";
+import { describe, test, expect } from "@jest/globals";
 import { EventContext } from "../src/types/event-context";
 
 describe("EventContext Transformation", () => {
   describe("GitHub Events", () => {
     test("transforms issue_comment event correctly", () => {
-      const githubEvent = {
-        action: "created",
-        issue: {
-          number: 123,
-          user: { login: "testuser" },
-        },
-        comment: {
-          body: "@agent help me fix this",
-          user: { login: "commenter" },
-        },
-        repository: {
-          full_name: "owner/repo",
-        },
-      };
-
       const context: EventContext = {
         platform: "github",
         eventType: "issue_comment",
@@ -61,21 +46,6 @@ describe("EventContext Transformation", () => {
 
   describe("Telegram Events", () => {
     test("transforms message event correctly", () => {
-      const telegramEvent = {
-        message: {
-          message_id: 1001,
-          from: {
-            id: 123456,
-            username: "telegramuser",
-          },
-          chat: {
-            id: -100123456789,
-            type: "group",
-          },
-          text: "@agent analyze this image",
-        },
-      };
-
       const context: EventContext = {
         platform: "telegram",
         eventType: "message",
@@ -145,7 +115,7 @@ describe("EventContext Transformation", () => {
 
       expect(context.metadata?.customField1).toBe("value1");
       expect(context.metadata?.customField2).toBe(123);
-      expect((context.metadata?.nested as any)?.field).toBe("value");
+      expect((context.metadata?.nested as Record<string, unknown>)?.field).toBe("value");
     });
   });
 
@@ -173,6 +143,7 @@ describe("EventContext Transformation", () => {
       };
 
       expect(context.source).toBeUndefined();
+      // eslint-disable-next-line sonarjs/deprecation
       expect(context.repository).toBeUndefined();
       expect(context.issueNumber).toBeUndefined();
       expect(context.metadata).toBeUndefined();

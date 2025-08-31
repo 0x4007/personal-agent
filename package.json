@@ -45,24 +45,18 @@
     "@ubiquity-os/plugin-sdk": "^3.1.4",
     "@ubiquity-os/ubiquity-os-logger": "^1.4.0",
     "dotenv": "16.4.7",
-    "esbuild": "^0.25.9",
     "hono": "^4.6.19",
     "ts-node": "^10.9.2"
   },
   "devDependencies": {
-    "@commitlint/cli": "19.6.1",
-    "@commitlint/config-conventional": "19.6.0",
     "@cspell/dict-node": "5.0.6",
     "@cspell/dict-software-terms": "4.2.4",
     "@cspell/dict-typescript": "3.2.0",
     "@eslint/js": "9.19.0",
     "@jest/globals": "29.7.0",
-    "@mswjs/data": "0.16.2",
     "@types/bun": "latest",
     "@types/jest": "^30.0.0",
     "@types/node": "22.12.0",
-    "@types/node-fetch": "^2.6.13",
-    "@vercel/ncc": "^0.38.3",
     "cross-env": "^7.0.3",
     "cspell": "8.17.3",
     "eslint": "9.19.0",
@@ -72,28 +66,12 @@
     "jest-junit": "16.0.0",
     "jest-md-dashboard": "0.8.0",
     "knip": "5.43.6",
-    "lint-staged": "15.4.3",
-    "node-fetch": "^3.3.2",
     "npm-run-all": "4.1.5",
     "prettier": "3.4.2",
     "ts-jest": "29.2.5",
     "typescript": "5.6.2",
     "typescript-eslint": "8.22.0",
     "wrangler": "3.102.0"
-  },
-  "lint-staged": {
-    "*.ts": [
-      "prettier --write",
-      "eslint --fix"
-    ],
-    "src/**.{ts,json}": [
-      "cspell"
-    ]
-  },
-  "commitlint": {
-    "extends": [
-      "@commitlint/config-conventional"
-    ]
   },
   "private": true
 }

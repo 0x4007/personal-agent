@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "@jest/globals";
-import { AccessMode, getAccessMode, getPlatformPAT, validatePlatformCredentials, getAccessControlConfig } from "../../src/security/access-control";
+import { AccessMode, getAccessMode, getPlatformPat, validatePlatformCredentials, getAccessControlConfig } from "../../src/security/access-control";
 
 describe("Access Control", () => {
   // Store original environment
@@ -47,29 +47,29 @@ describe("Access Control", () => {
     });
   });
 
-  describe("getPlatformPAT", () => {
+  describe("getPlatformPat", () => {
     it("should return GITHUB_PAT for github platform", () => {
       process.env.GITHUB_PAT = "github-specific-token";
       process.env.USER_PAT = "fallback-token";
 
-      expect(getPlatformPAT("github")).toBe("github-specific-token");
+      expect(getPlatformPat("github")).toBe("github-specific-token");
     });
 
     it("should fallback to USER_PAT for github if GITHUB_PAT not present", () => {
       delete process.env.GITHUB_PAT;
       process.env.USER_PAT = "fallback-token";
 
-      expect(getPlatformPAT("github")).toBe("fallback-token");
+      expect(getPlatformPat("github")).toBe("fallback-token");
     });
 
     it("should return TELEGRAM_BOT_TOKEN for telegram platform", () => {
       process.env.TELEGRAM_BOT_TOKEN = "telegram-token";
 
-      expect(getPlatformPAT("telegram")).toBe("telegram-token");
+      expect(getPlatformPat("telegram")).toBe("telegram-token");
     });
 
     it("should return undefined for unknown platform", () => {
-      expect(getPlatformPAT("unknown")).toBeUndefined();
+      expect(getPlatformPat("unknown")).toBeUndefined();
     });
   });
 
