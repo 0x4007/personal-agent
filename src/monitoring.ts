@@ -63,8 +63,8 @@ export class MetricsCollector {
     return (
       metric.duration > this.alertThresholds.maxResponseTime * 2 ||
       metric.metadata.retries === this.alertThresholds.maxRetries ||
-      metric.error?.includes('UNAUTHORIZED') ||
-      metric.error?.includes('FORBIDDEN')
+      metric.error?.includes('UNAUTHORIZED') === true ||
+      metric.error?.includes('FORBIDDEN') === true
     );
   }
   

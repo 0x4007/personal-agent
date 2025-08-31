@@ -64,6 +64,7 @@
     "@eslint/js": "9.19.0",
     "@jest/globals": "29.7.0",
     "@mswjs/data": "0.16.2",
+    "@types/bun": "latest",
     "@types/jest": "^30.0.0",
     "@types/node": "22.12.0",
     "@types/node-fetch": "^2.6.13",
@@ -84,8 +85,7 @@
     "ts-jest": "29.2.5",
     "typescript": "5.6.2",
     "typescript-eslint": "8.22.0",
-    "wrangler": "3.102.0",
-    "@types/bun": "latest"
+    "wrangler": "3.102.0"
   },
   "lint-staged": {
     "*.ts": [
