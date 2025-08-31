@@ -188,12 +188,12 @@ async function executeClaudeCommandInternal(
 ): Promise<string> {
   logger.verbose("Executing Claude CLI command internal...");
 
-  const userPat = process.env.GITHUB_PAT;
+  const userPat = process.env.PERSONAL_ACCESS_TOKEN;
   if (userPat) {
     logger.info("Configuring GitHub CLI authentication...");
     await configureGitHubAuth(userPat, logger);
   } else {
-    logger.info("No GITHUB_PAT found, gh CLI will use default authentication");
+    logger.info("No PERSONAL_ACCESS_TOKEN found, gh CLI will use default authentication");
   }
 
   const tmpDir = process.env.RUNNER_TEMP || "/tmp";
@@ -223,8 +223,8 @@ async function executeClaudeCommandInternal(
           GITHUB_ACTIONS: "false",
           CI: "false",
           CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-          GITHUB_TOKEN: process.env.GITHUB_PAT || process.env.GITHUB_TOKEN,
-          GH_TOKEN: process.env.GITHUB_PAT || process.env.GITHUB_TOKEN,
+          GITHUB_TOKEN: process.env.PERSONAL_ACCESS_TOKEN || process.env.GITHUB_TOKEN,
+          GH_TOKEN: process.env.PERSONAL_ACCESS_TOKEN || process.env.GITHUB_TOKEN,
           HOME: process.env.HOME || "/home/runner",
         },
         stdio: ["ignore", "pipe", "pipe"],

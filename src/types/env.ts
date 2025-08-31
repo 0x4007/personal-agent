@@ -14,7 +14,7 @@ export const envSchema = T.Object({
   KERNEL_PUBLIC_KEY: T.Optional(T.String()),
   AGENT_OWNER: T.String(),
   // Platform-specific credentials
-  GITHUB_PAT: T.Optional(T.String()),
+  PERSONAL_ACCESS_TOKEN: T.Optional(T.String()),
   TELEGRAM_BOT_TOKEN: T.Optional(T.String()),
 });
 

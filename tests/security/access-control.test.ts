@@ -18,14 +18,14 @@ describe("Access Control", () => {
   describe("getAccessMode", () => {
     it("should return READ_ONLY when explicitly set", () => {
       process.env.ACCESS_MODE = "read-only";
-      process.env.GITHUB_PAT = "some-token";
+      process.env.PERSONAL_ACCESS_TOKEN = "some-token";
 
       expect(getAccessMode()).toBe(AccessMode.READ_ONLY);
     });
 
-    it("should return FULL when GITHUB_PAT is present and not read-only", () => {
+    it("should return FULL when PERSONAL_ACCESS_TOKEN is present and not read-only", () => {
       delete process.env.ACCESS_MODE;
-      process.env.GITHUB_PAT = "some-token";
+      process.env.PERSONAL_ACCESS_TOKEN = "some-token";
 
       expect(getAccessMode()).toBe(AccessMode.FULL);
     });
@@ -33,21 +33,21 @@ describe("Access Control", () => {
 
     it("should return READ_ONLY when no PAT is present", () => {
       delete process.env.ACCESS_MODE;
-      delete process.env.GITHUB_PAT;
+      delete process.env.PERSONAL_ACCESS_TOKEN;
 
       expect(getAccessMode()).toBe(AccessMode.READ_ONLY);
     });
   });
 
   describe("getPlatformPat", () => {
-    it("should return GITHUB_PAT for github platform", () => {
-      process.env.GITHUB_PAT = "github-specific-token";
+    it("should return PERSONAL_ACCESS_TOKEN for github platform", () => {
+      process.env.PERSONAL_ACCESS_TOKEN = "github-specific-token";
 
       expect(getPlatformPat("github")).toBe("github-specific-token");
     });
 
-    it("should return undefined when GITHUB_PAT not present", () => {
-      delete process.env.GITHUB_PAT;
+    it("should return undefined when PERSONAL_ACCESS_TOKEN not present", () => {
+      delete process.env.PERSONAL_ACCESS_TOKEN;
 
       expect(getPlatformPat("github")).toBeUndefined();
     });
@@ -65,13 +65,13 @@ describe("Access Control", () => {
 
   describe("validatePlatformCredentials", () => {
     it("should return true when credentials exist", () => {
-      process.env.GITHUB_PAT = "token";
+      process.env.PERSONAL_ACCESS_TOKEN = "token";
 
       expect(validatePlatformCredentials("github")).toBe(true);
     });
 
     it("should return false when credentials are missing", () => {
-      delete process.env.GITHUB_PAT;
+      delete process.env.PERSONAL_ACCESS_TOKEN;
 
       expect(validatePlatformCredentials("github")).toBe(false);
     });
@@ -89,7 +89,7 @@ describe("Access Control", () => {
 
   describe("getAccessControlConfig", () => {
     it("should return full config for github with full access", () => {
-      process.env.GITHUB_PAT = "github-token";
+      process.env.PERSONAL_ACCESS_TOKEN = "github-token";
       delete process.env.ACCESS_MODE;
 
       const config = getAccessControlConfig("github");
@@ -100,7 +100,7 @@ describe("Access Control", () => {
     });
 
     it("should return read-only config when set", () => {
-      process.env.GITHUB_PAT = "github-token";
+      process.env.PERSONAL_ACCESS_TOKEN = "github-token";
       process.env.ACCESS_MODE = "read-only";
 
       const config = getAccessControlConfig("github");
@@ -121,7 +121,7 @@ describe("Access Control", () => {
     });
 
     it("should handle missing credentials", () => {
-      delete process.env.GITHUB_PAT;
+      delete process.env.PERSONAL_ACCESS_TOKEN;
 
       const config = getAccessControlConfig("github");
 

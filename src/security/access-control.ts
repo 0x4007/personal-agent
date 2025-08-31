@@ -26,7 +26,7 @@ export function getAccessMode(): AccessMode {
 
   // Check if we have a PAT with write permissions
   // This is determined by the PAT itself, not by code-level checks
-  if (process.env.GITHUB_PAT) {
+  if (process.env.PERSONAL_ACCESS_TOKEN) {
     // Default to full access if PAT is provided
     // The PAT's actual permissions determine what operations succeed
     return AccessMode.FULL;
@@ -42,7 +42,7 @@ export function getAccessMode(): AccessMode {
 export function getPlatformPat(platform: string): string | undefined {
   switch (platform) {
     case "github":
-      return process.env.GITHUB_PAT;
+      return process.env.PERSONAL_ACCESS_TOKEN;
     case "telegram":
       return process.env.TELEGRAM_BOT_TOKEN;
     default:

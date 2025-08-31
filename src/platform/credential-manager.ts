@@ -8,7 +8,7 @@ export class CredentialManager {
 
   private _loadCredentials(env: Record<string, string | undefined>): void {
     // Load platform-specific credentials
-    this._credentials.set("github", env.GITHUB_PAT);
+    this._credentials.set("github", env.PERSONAL_ACCESS_TOKEN);
     this._credentials.set("telegram", env.TELEGRAM_BOT_TOKEN);
   }
 
@@ -58,7 +58,7 @@ export class CredentialManager {
 
   private _getRequiredEnvVar(platform: string): string {
     const mapping: Record<string, string> = {
-      github: "GITHUB_PAT",
+      github: "PERSONAL_ACCESS_TOKEN",
       telegram: "TELEGRAM_BOT_TOKEN",
     };
     return mapping[platform.toLowerCase()] || "UNKNOWN_TOKEN";

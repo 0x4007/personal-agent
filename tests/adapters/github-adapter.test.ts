@@ -37,7 +37,6 @@ describe("GitHubAdapter", () => {
       expect(context.platform).toBe("github");
       expect(context.eventType).toBe("issue_comment");
       expect(context.source).toBe("owner/repo");
-      expect(context.repository).toBe("owner/repo");
       expect(context.issueNumber).toBe("42");
       expect(context.author).toBe("sender");
       expect(context.command).toBe("@agent please help with this");

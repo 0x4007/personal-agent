@@ -6,7 +6,7 @@ import { Env, envSchema, PluginSettings, pluginSettingsSchema, SupportedEvents }
 
 export default createActionsPlugin<PluginSettings, Env, null, SupportedEvents>(
   async (context) => {
-    context.octokit = new customOctokit({ auth: context.env.GITHUB_PAT });
+    context.octokit = new customOctokit({ auth: context.env.PERSONAL_ACCESS_TOKEN });
 
     try {
       const result = await runPlugin(context);

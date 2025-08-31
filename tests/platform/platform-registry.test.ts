@@ -8,7 +8,7 @@ describe("PlatformRegistry", () => {
       const platform = PlatformRegistry.getPlatform("github");
       expect(platform).toBeDefined();
       expect(platform?.name).toBe("GitHub");
-      expect(platform?.credentialEnvVar).toBe("GITHUB_PAT");
+      expect(platform?.credentialEnvVar).toBe("PERSONAL_ACCESS_TOKEN");
       expect(platform?.tools).toContain("gh");
       expect(platform?.tools).toContain("git");
     });
@@ -68,9 +68,9 @@ describe("PlatformRegistry", () => {
   });
 
   describe("getCredentialEnvVar", () => {
-    it("should return GITHUB_PAT for GitHub", () => {
+    it("should return PERSONAL_ACCESS_TOKEN for GitHub", () => {
       const envVar = PlatformRegistry.getCredentialEnvVar("github");
-      expect(envVar).toBe("GITHUB_PAT");
+      expect(envVar).toBe("PERSONAL_ACCESS_TOKEN");
     });
 
     it("should return TELEGRAM_BOT_TOKEN for Telegram", () => {

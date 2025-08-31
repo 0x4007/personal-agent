@@ -2,9 +2,9 @@ import { CredentialManager } from "../../src/platform/credential-manager";
 
 describe("CredentialManager", () => {
   describe("credential management", () => {
-    it("should load GitHub credentials from GITHUB_PAT", () => {
+    it("should load GitHub credentials from PERSONAL_ACCESS_TOKEN", () => {
       const env = {
-        GITHUB_PAT: "github-token-123",
+        PERSONAL_ACCESS_TOKEN: "github-token-123",
       };
       const manager = new CredentialManager(env);
 
@@ -12,7 +12,7 @@ describe("CredentialManager", () => {
       expect(manager.getCredential("github")).toBe("github-token-123");
     });
 
-    it("should handle missing GITHUB_PAT", () => {
+    it("should handle missing PERSONAL_ACCESS_TOKEN", () => {
       const env = {};
       const manager = new CredentialManager(env);
 
@@ -40,7 +40,7 @@ describe("CredentialManager", () => {
 
     it("should handle empty credential strings", () => {
       const env = {
-        GITHUB_PAT: "",
+        PERSONAL_ACCESS_TOKEN: "",
       };
       const manager = new CredentialManager(env);
 
@@ -51,7 +51,7 @@ describe("CredentialManager", () => {
   describe("getAvailablePlatforms", () => {
     it("should return only platforms with valid credentials", () => {
       const env = {
-        GITHUB_PAT: "github-token",
+        PERSONAL_ACCESS_TOKEN: "github-token",
         TELEGRAM_BOT_TOKEN: "telegram-token",
       };
       const manager = new CredentialManager(env);
@@ -73,7 +73,7 @@ describe("CredentialManager", () => {
   describe("getAuthenticationStatus", () => {
     it("should return authentication status for all platforms", () => {
       const env = {
-        GITHUB_PAT: "github-token",
+        PERSONAL_ACCESS_TOKEN: "github-token",
         TELEGRAM_BOT_TOKEN: "telegram-token",
       };
       const manager = new CredentialManager(env);
@@ -87,7 +87,7 @@ describe("CredentialManager", () => {
   describe("validatePlatformCredentials", () => {
     it("should validate present credentials", () => {
       const env = {
-        GITHUB_PAT: "github-token",
+        PERSONAL_ACCESS_TOKEN: "github-token",
       };
       const manager = new CredentialManager(env);
 
@@ -102,7 +102,7 @@ describe("CredentialManager", () => {
 
       const result = manager.validatePlatformCredentials("github");
       expect(result.valid).toBe(false);
-      expect(result.message).toContain("GITHUB_PAT");
+      expect(result.message).toContain("PERSONAL_ACCESS_TOKEN");
     });
 
     it("should provide correct env var name in error message", () => {

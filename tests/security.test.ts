@@ -62,23 +62,23 @@ describe("Security Controls", () => {
 
     test("Credentials isolated per platform", () => {
       // Test that credentials can be different per platform
-      process.env.GITHUB_PAT = "test_github_pat";
+      process.env.PERSONAL_ACCESS_TOKEN = "test_github_pat";
       process.env.TELEGRAM_BOT_TOKEN = "test_telegram_token";
 
-      const githubPat = process.env.GITHUB_PAT;
+      const githubPat = process.env.PERSONAL_ACCESS_TOKEN;
       const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 
       // Ensure they're separate variables
       expect(githubPat).not.toBe(telegramToken);
 
       // Clean up
-      delete process.env.GITHUB_PAT;
+      delete process.env.PERSONAL_ACCESS_TOKEN;
       delete process.env.TELEGRAM_BOT_TOKEN;
     });
 
     test("Environment variables not exposed", () => {
       const publicOutput = JSON.stringify({ status: "ok" });
-      expect(publicOutput).not.toContain("GITHUB_PAT");
+      expect(publicOutput).not.toContain("PERSONAL_ACCESS_TOKEN");
       expect(publicOutput).not.toContain("CLAUDE_CODE_OAUTH_TOKEN");
     });
   });

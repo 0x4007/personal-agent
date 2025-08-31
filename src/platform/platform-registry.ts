@@ -23,7 +23,7 @@ export class PlatformRegistry {
         name: "GitHub",
         formatter: new GitHubFormatter(),
         tools: ["gh", "git", "shell"],
-        credentialEnvVar: "GITHUB_PAT",
+        credentialEnvVar: "PERSONAL_ACCESS_TOKEN",
         features: {
           supportsMarkdown: true,
           supportsCodeBlocks: true,
