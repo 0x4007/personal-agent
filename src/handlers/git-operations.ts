@@ -15,9 +15,14 @@ export interface ExecutionSummary {
 export function executeGitCommands(commands: string[], logger: { info: (msg: string) => void; error: (msg: string) => void }): ExecutionSummary {
   const results: CommandResult[] = [];
 
+  logger.info("=== GIT OPERATIONS DEBUG ===");
+  logger.info("Total commands to execute: " + commands.length);
+  logger.info("Current working directory: " + process.cwd());
+  logger.info("USER_PAT available: " + (process.env.USER_PAT ? "YES" : "NO"));
+
   // Just execute everything - PAT permissions handle all security
   for (const cmd of commands) {
-    logger.info(`Executing: ${cmd}`);
+    logger.info(`Executing command: ${cmd}`);
 
     try {
       // eslint-disable-next-line sonarjs/os-command

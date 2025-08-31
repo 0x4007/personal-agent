@@ -10,9 +10,16 @@ export function extractBashCommands(claudeResponse: string): string[] {
   const commands: string[] = [];
   let match;
 
+  console.log("=== PARSER DEBUG ===");
+  console.log("Input length:", claudeResponse.length);
+  console.log("Looking for code blocks...");
+
   while ((match = codeBlockRegex.exec(claudeResponse)) !== null) {
     const language = match[1]?.toLowerCase();
     const content = match[2];
+
+    console.log(`Found code block with language: ${language || "[none]"}`);
+    console.log(`Content: ${content.substring(0, 100)}...`);
 
     // Only process bash/shell blocks or unlabeled blocks that look like commands
     if (language === "bash" || language === "sh" || language === "shell" || language === "zsh" || (!language && looksLikeCommand(content))) {

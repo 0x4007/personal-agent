@@ -80,7 +80,18 @@ Issue Context:
     }
 
     // Execute Claude with the prompt, with retry for empty responses
+    logger.info("=== CLAUDE EXECUTION DEBUG ===");
+    logger.info("Full prompt being sent to Claude:");
+    logger.info(claudePrompt);
+    logger.info("=== END PROMPT ===");
+
     let response = await executeClaudeCommand(claudePrompt, logger);
+
+    logger.info("=== CLAUDE RESPONSE DEBUG ===");
+    logger.info("Full Claude response:");
+    logger.info(response);
+    logger.info("Response length: " + response.length);
+    logger.info("=== END RESPONSE ===");
 
     // If response is empty, try with a simplified prompt
     if (response === "Claude generated an empty response." || response.length === 0) {
@@ -105,11 +116,21 @@ Provide a brief but helpful response.`;
     // Extract and execute bash commands from Claude's response
     let finalResponse = response;
 
+    logger.info("=== COMMAND EXTRACTION DEBUG ===");
+    logger.info("isReadOnly: " + isReadOnly);
+    logger.info("ACCESS_MODE env var: " + process.env.ACCESS_MODE);
+
     if (!isReadOnly) {
       const bashCommands = extractBashCommands(response);
 
+      logger.info("Extracted commands from Claude response:");
+      bashCommands.forEach((cmd, i) => {
+        logger.info(`  [${i}]: ${cmd}`);
+      });
+
       if (bashCommands.length > 0) {
         logger.info(`Found ${bashCommands.length} commands to execute`);
+        logger.info("=== EXECUTING COMMANDS ===");
 
         // Just execute everything - PAT permissions handle security
         const execution = executeGitCommands(bashCommands, logger);
@@ -211,12 +232,32 @@ async function executeClaudeCommandInternal(
         "text", // Use text format for simpler parsing
       ];
 
+      logger.info("=== CLAUDE CLI DEBUG ===");
+      logger.info("Claude CLI path: " + claudePath);
+      logger.info("Claude CLI args: " + JSON.stringify(claudeArgs));
+      logger.info("Environment variables:");
+      logger.info("  CLAUDE_CODE_OAUTH_TOKEN: " + (process.env.CLAUDE_CODE_OAUTH_TOKEN ? "[SET]" : "[NOT SET]"));
+      logger.info("  USER_PAT: " + (process.env.USER_PAT ? "[SET]" : "[NOT SET]"));
+      logger.info("  ACCESS_MODE: " + process.env.ACCESS_MODE);
+      logger.info("  CI: " + process.env.CI);
+      logger.info("  HOME: " + process.env.HOME);
+      logger.info("  PWD: " + process.cwd());
+
       logger.verbose(`Executing: claude ${claudeArgs.join(" ")}`);
 
       // Try to find claude in PATH first, fallback to known locations
       const claudePath = process.env.CI
         ? "claude" // In CI, rely on PATH
         : `${process.env.HOME || "/home/runner"}/.local/bin/claude`;
+
+      // Check if Claude CLI exists
+      try {
+        // eslint-disable-next-line sonarjs/os-command
+        const claudeVersion = execSync(`${claudePath} --version`, { encoding: "utf8" });
+        logger.info("Claude CLI version: " + claudeVersion.trim());
+      } catch (e) {
+        logger.info("Failed to get Claude version: " + String(e));
+      }
 
       const claude = spawn(claudePath, claudeArgs, {
         env: {
