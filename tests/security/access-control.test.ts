@@ -18,29 +18,21 @@ describe("Access Control", () => {
   describe("getAccessMode", () => {
     it("should return READ_ONLY when explicitly set", () => {
       process.env.ACCESS_MODE = "read-only";
-      process.env.USER_PAT = "some-token";
+      process.env.GITHUB_PAT = "some-token";
 
       expect(getAccessMode()).toBe(AccessMode.READ_ONLY);
     });
 
-    it("should return FULL when PAT is present and not read-only", () => {
+    it("should return FULL when GITHUB_PAT is present and not read-only", () => {
       delete process.env.ACCESS_MODE;
-      process.env.USER_PAT = "some-token";
+      process.env.GITHUB_PAT = "some-token";
 
       expect(getAccessMode()).toBe(AccessMode.FULL);
     });
 
-    it("should return FULL when GITHUB_PAT is present", () => {
-      delete process.env.ACCESS_MODE;
-      delete process.env.USER_PAT;
-      process.env.GITHUB_PAT = "github-token";
-
-      expect(getAccessMode()).toBe(AccessMode.FULL);
-    });
 
     it("should return READ_ONLY when no PAT is present", () => {
       delete process.env.ACCESS_MODE;
-      delete process.env.USER_PAT;
       delete process.env.GITHUB_PAT;
 
       expect(getAccessMode()).toBe(AccessMode.READ_ONLY);
@@ -50,16 +42,14 @@ describe("Access Control", () => {
   describe("getPlatformPat", () => {
     it("should return GITHUB_PAT for github platform", () => {
       process.env.GITHUB_PAT = "github-specific-token";
-      process.env.USER_PAT = "fallback-token";
 
       expect(getPlatformPat("github")).toBe("github-specific-token");
     });
 
-    it("should fallback to USER_PAT for github if GITHUB_PAT not present", () => {
+    it("should return undefined when GITHUB_PAT not present", () => {
       delete process.env.GITHUB_PAT;
-      process.env.USER_PAT = "fallback-token";
 
-      expect(getPlatformPat("github")).toBe("fallback-token");
+      expect(getPlatformPat("github")).toBeUndefined();
     });
 
     it("should return TELEGRAM_BOT_TOKEN for telegram platform", () => {
@@ -82,7 +72,6 @@ describe("Access Control", () => {
 
     it("should return false when credentials are missing", () => {
       delete process.env.GITHUB_PAT;
-      delete process.env.USER_PAT;
 
       expect(validatePlatformCredentials("github")).toBe(false);
     });
@@ -133,7 +122,6 @@ describe("Access Control", () => {
 
     it("should handle missing credentials", () => {
       delete process.env.GITHUB_PAT;
-      delete process.env.USER_PAT;
 
       const config = getAccessControlConfig("github");
 

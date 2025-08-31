@@ -43,7 +43,6 @@ export async function claudeAgent(context: Context): Promise<void> {
   const eventContext: EventContext = {
     platform,
     eventType: "issue_comment",
-    repository: `${owner}/${repo}`,
     issueNumber: String(issueNumber),
     author: sender || "unknown",
     command,

@@ -16,8 +16,6 @@ export const envSchema = T.Object({
   // Platform-specific credentials
   GITHUB_PAT: T.Optional(T.String()),
   TELEGRAM_BOT_TOKEN: T.Optional(T.String()),
-  // Backwards compatibility (will be deprecated)
-  USER_PAT: T.Optional(T.String()),
 });
 
 export type Env = StaticDecode<typeof envSchema>;

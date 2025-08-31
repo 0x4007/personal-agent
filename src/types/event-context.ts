@@ -21,11 +21,6 @@ export interface EventContext {
    */
   source?: string;
 
-  /**
-   * GitHub-specific: repository in "owner/repo" format
-   * @deprecated Use 'source' for platform-agnostic code
-   */
-  repository?: string;
 
   /**
    * GitHub issue number
@@ -83,7 +78,6 @@ export interface EventContext {
 
     // Common fields
     retries?: number;
-    fallbackUsed?: boolean;
 
     // Extensible for any platform
     [key: string]: unknown;

@@ -94,7 +94,6 @@ export class GitHubAdapter {
       platform: "github",
       eventType: "issue_comment",
       source: `${repository.owner.login}/${repository.name}`,
-      repository: `${repository.owner.login}/${repository.name}`,
       issueNumber: issue.number?.toString(),
       author: sender?.login || comment?.user?.login || "unknown",
       command: comment?.body || "",
@@ -122,7 +121,6 @@ export class GitHubAdapter {
       platform: "github",
       eventType: "pull_request_comment",
       source: `${repository.owner.login}/${repository.name}`,
-      repository: `${repository.owner.login}/${repository.name}`,
       pullRequestNumber: pull_request.number?.toString(),
       author: sender?.login || comment?.user?.login || "unknown",
       command: comment?.body || "",
@@ -152,7 +150,6 @@ export class GitHubAdapter {
       platform: "github",
       eventType: "push",
       source: `${repository.owner.login}/${repository.name}`,
-      repository: `${repository.owner.login}/${repository.name}`,
       author: pusher?.name || "unknown",
       command: head_commit?.message || "",
       metadata: {
@@ -188,7 +185,6 @@ export class GitHubAdapter {
           platform: "github",
           eventType: eventName,
           source: payload.repository?.full_name || "unknown",
-          repository: payload.repository?.full_name,
           author: payload.sender?.login || "unknown",
           command: "",
           metadata: {

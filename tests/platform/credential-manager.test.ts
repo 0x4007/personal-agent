@@ -12,24 +12,12 @@ describe("CredentialManager", () => {
       expect(manager.getCredential("github")).toBe("github-token-123");
     });
 
-    it("should fallback to USER_PAT for GitHub if GITHUB_PAT not present", () => {
-      const env = {
-        USER_PAT: "user-pat-123",
-      };
+    it("should handle missing GITHUB_PAT", () => {
+      const env = {};
       const manager = new CredentialManager(env);
 
-      expect(manager.hasCredential("github")).toBe(true);
-      expect(manager.getCredential("github")).toBe("user-pat-123");
-    });
-
-    it("should prefer GITHUB_PAT over USER_PAT", () => {
-      const env = {
-        GITHUB_PAT: "github-token-123",
-        USER_PAT: "user-pat-123",
-      };
-      const manager = new CredentialManager(env);
-
-      expect(manager.getCredential("github")).toBe("github-token-123");
+      expect(manager.hasCredential("github")).toBe(false);
+      expect(manager.getCredential("github")).toBeUndefined();
     });
 
     it("should load Telegram credentials", () => {

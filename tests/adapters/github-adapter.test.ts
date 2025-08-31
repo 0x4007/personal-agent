@@ -61,7 +61,7 @@ describe("GitHubAdapter", () => {
           created_at: "2024-01-01T00:00:00Z",
           updated_at: "2024-01-01T00:00:00Z",
           user: {
-            login: "fallback-user",
+            login: "issue-author",
           },
         },
         repository: {
@@ -77,7 +77,7 @@ describe("GitHubAdapter", () => {
       };
 
       const context = GitHubAdapter.fromIssueComment(payload);
-      expect(context.author).toBe("fallback-user");
+      expect(context.author).toBe("issue-author");
     });
   });
 
