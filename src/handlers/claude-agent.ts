@@ -2,7 +2,10 @@ import { spawn, execSync } from "child_process";
 import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { Context } from "../types";
+import { extractBashCommands } from "./claude-parser";
+import { executeGitCommands, filterSafeCommands } from "./git-operations";
 
+// eslint-disable-next-line sonarjs/cognitive-complexity
 export async function claudeAgent(context: Context): Promise<void> {
   const { logger, payload } = context;
 
@@ -12,10 +15,10 @@ export async function claudeAgent(context: Context): Promise<void> {
   const owner = payload.repository.owner.login;
   const body = payload.comment.body;
   const agentOwner = context.env.AGENT_OWNER;
-  
+
   // Check if we're in read-only mode (set by GitHub Actions based on invoker)
-  const isReadOnly = process.env.ACCESS_MODE === 'read-only';
-  const accessLevel = isReadOnly ? 'read-only' : 'full';
+  const isReadOnly = process.env.ACCESS_MODE === "read-only";
+  const accessLevel = isReadOnly ? "read-only" : "full";
 
   logger.info(`Executing claudeAgent:`, { sender, repo, issueNumber, owner, agentOwner, accessLevel });
 
@@ -35,11 +38,9 @@ export async function claudeAgent(context: Context): Promise<void> {
   logger.info(`Processing command with Claude: ${command}`);
 
   try {
-    // Prepare the context for Claude - keep it simple, access control is handled at infrastructure level
-    const claudePrompt = isReadOnly 
-      ? `You are a helpful GitHub assistant with READ-ONLY access responding to a command in a GitHub issue comment.
-
-You can only read and analyze code, search for information, and provide insights.
+    // Prepare the context for Claude with gh CLI instructions
+    const claudePrompt = isReadOnly
+      ? `You are a GitHub assistant with READ-ONLY access. You can only read and analyze code.
 You CANNOT create commits, push branches, open PRs, or modify anything.
 
 Issue Context:
@@ -48,16 +49,36 @@ Issue Context:
 - Comment by: ${sender}
 - Command: ${command}
 
-Please provide a helpful response. If asked to perform write operations, explain that you only have read access.`
-      : `You are a helpful GitHub assistant responding to a command in a GitHub issue comment.
+If asked to perform write operations, explain that you only have read access.`
+      : `You are a GitHub assistant responding to a command.
+For any GitHub operations, use the gh CLI which is already authenticated.
+The repository is already cloned and you're in the correct directory.
+
+Available commands:
+- gh pr create/list/view
+- gh issue create/list/view
+- git commands (status, branch, commit, push, etc.)
+
+Provide bash commands in code blocks when you need to execute operations.
 
 Issue Context:
 - Repository: ${owner}/${repo}
 - Issue #${issueNumber}
 - Comment by: ${sender}
-- Command: ${command}
+- Command: ${command}`;
 
-Please provide a helpful and concise response to this command. Be friendly and professional.`;
+    // Configure git before any operations
+    if (!isReadOnly) {
+      try {
+         
+        execSync(`git config --global user.name "Personal Agent[bot]"`);
+         
+        execSync(`git config --global user.email "agent@users.noreply.github.com"`);
+        logger.info("Git configuration set for commits");
+      } catch (error) {
+        logger.info(`Git config already set or failed: ${error}`);
+      }
+    }
 
     // Execute Claude with the prompt, with retry for empty responses
     let response = await executeClaudeCommand(claudePrompt, logger);
@@ -82,8 +103,34 @@ Provide a brief but helpful response.`;
       }
     }
 
-    // Post the Claude response as a comment
-    await context.commentHandler.postComment(context, logger.ok(response));
+    // Extract and execute bash commands from Claude's response
+    let finalResponse = response;
+
+    if (!isReadOnly) {
+      const bashCommands = extractBashCommands(response);
+
+      if (bashCommands.length > 0) {
+        logger.info(`Found ${bashCommands.length} commands to execute`);
+
+        // Filter to safe commands
+        const safeCommands = filterSafeCommands(bashCommands);
+        logger.info(`Filtered to ${safeCommands.length} safe commands`);
+
+        // Execute the commands
+        const execution = executeGitCommands(safeCommands, logger, isReadOnly);
+
+        // Combine Claude's response with execution results
+        if (execution.results.length > 0) {
+          finalResponse = `${response}\n\n---\n\n### Execution Results:\n\n${execution.summary}`;
+        }
+      }
+    } else if (extractBashCommands(response).length > 0) {
+      // In read-only mode, append a note about commands not being executed
+      finalResponse = `${response}\n\n---\n\n⚠️ **Note:** Commands shown above were not executed due to read-only access.`;
+    }
+
+    // Post the final response as a comment
+    await context.commentHandler.postComment(context, logger.ok(finalResponse));
 
     logger.ok(`Successfully posted Claude response!`);
   } catch (error) {
@@ -295,13 +342,15 @@ async function configureGitHubAuth(token: string, logger: { info: (msg: string) 
     // GitHub Actions runners have gh CLI pre-installed
     // Configure gh CLI to use the token
     // Using echo to pipe the token is the standard way to authenticate gh CLI in CI
+    // eslint-disable-next-line sonarjs/os-command
     execSync(`echo "${token}" | gh auth login --with-token`, {
       stdio: "ignore",
       env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
     });
-    
+
     // Verify authentication
-    const authStatus = execSync("gh auth status", { 
+    // eslint-disable-next-line sonarjs/no-os-command-from-path
+    const authStatus = execSync("gh auth status", {
       encoding: "utf8",
       env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
     });
