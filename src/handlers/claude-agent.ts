@@ -32,36 +32,21 @@ export async function claudeAgent(context: Context): Promise<void> {
 
   logger.info(`Processing command with Claude: ${command}`);
 
+  // Build event context for Claude
+  const eventContext = {
+    eventType: "issue_comment",
+    repository: `${owner}/${repo}`,
+    issueNumber,
+    author: sender,
+    command
+  };
+
   try {
-    const claudePrompt = isReadOnly
-      ? `You are a GitHub assistant with READ-ONLY access. You can only read and analyze code.
-You CANNOT create commits, push branches, open PRs, or modify anything.
-
-Issue Context:
-- Repository: ${owner}/${repo}
-- Issue #${issueNumber}
-- Comment by: ${sender}
-- Command: ${command}
-
-If asked to perform write operations, explain that you only have read access.`
-      : `You are a GitHub assistant responding to a command.
-For any GitHub operations, use the gh CLI which is already authenticated.
-The repository is already cloned and you're in the correct directory.
-
-Available commands:
-- gh pr create/list/view
-- gh issue create/list/view
-- git commands (status, branch, commit, push, etc.)
-
-Issue Context:
-- Repository: ${owner}/${repo}
-- Issue #${issueNumber}
-- Comment by: ${sender}
-- Command: ${command}`;
+    const claudePrompt = buildPrompt(isReadOnly, eventContext);
 
     if (!isReadOnly) {
       try {
-        execSync(`git config --global user.name "Personal Agent[bot]"`);
+        execSync(`git config --global user.name "Agent[bot]"`);
         execSync(`git config --global user.email "agent@users.noreply.github.com"`);
         logger.info("Git configuration set for commits");
       } catch (error) {
@@ -102,6 +87,40 @@ Provide a brief but helpful response.`;
   }
 
   logger.verbose(`Exiting claudeAgent`);
+}
+
+interface EventContext {
+  eventType: string;
+  repository: string;
+  issueNumber?: string;
+  pullRequestNumber?: string;
+  author: string;
+  command: string;
+  [key: string]: string | number | undefined;
+}
+
+function buildPrompt(isReadOnly: boolean, context: EventContext): string {
+  const accessDescription = isReadOnly
+    ? "You have READ-ONLY access. You can analyze and read code but CANNOT create commits, push branches, or modify anything."
+    : "You have full access to perform operations.";
+
+  const contextDescription = Object.entries(context)
+    .filter(([key]) => key !== 'command')
+    .map(([key, value]) => {
+      const formattedKey = key.replace(/([A-Z])/g, ' $1').toLowerCase();
+      return `- ${formattedKey}: ${value}`;
+    })
+    .join('\n');
+
+  return `You are an assistant responding to a request.
+${accessDescription}
+
+Event Context:
+${contextDescription}
+
+Request: ${context.command}
+
+${!isReadOnly ? 'The repository is already cloned and you\'re in the correct directory. You can use git and gh CLI commands which are already authenticated.' : 'If asked to perform write operations, explain that you only have read access.'}`;
 }
 
 async function executeClaudeCommand(
@@ -157,22 +176,13 @@ async function executeClaudeCommandInternal(
     logger.verbose(`Wrote prompt to: ${promptPath}`);
 
     return await new Promise((resolve, reject) => {
-      const claudeArgs = [
-        "--dangerously-skip-permissions",
-        "-p",
-        promptPath,
-        "--verbose",
-        "--output-format",
-        "text",
-      ];
+      const claudeArgs = ["--dangerously-skip-permissions", "-p", promptPath, "--verbose", "--output-format", "text"];
 
-      const claudePath = process.env.CI
-        ? "claude"
-        : `${process.env.HOME || "/home/runner"}/.local/bin/claude`;
+      const claudePath = process.env.CI ? "claude" : `${process.env.HOME || "/home/runner"}/.local/bin/claude`;
 
       try {
         // eslint-disable-next-line sonarjs/os-command
-      const claudeVersion = execSync(`${claudePath} --version`, { encoding: "utf8" });
+        const claudeVersion = execSync(`${claudePath} --version`, { encoding: "utf8" });
         logger.info("Claude CLI version: " + claudeVersion.trim());
       } catch (e) {
         logger.info("Failed to get Claude version: " + String(e));

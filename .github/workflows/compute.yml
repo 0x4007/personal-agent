@@ -49,6 +49,20 @@ jobs:
       access_mode: ${{ steps.check-invoker.outputs.access_mode }}
       invoker: ${{ steps.check-invoker.outputs.invoker }}
     steps:
+      - name: Debug Inputs
+        run: |
+          echo "=== DEBUG: Workflow Inputs ==="
+          echo "stateId: ${{ github.event.inputs.stateId }}"
+          echo "eventName: ${{ github.event.inputs.eventName }}"
+          echo "eventPayload: ${{ github.event.inputs.eventPayload }}"
+          echo "settings: ${{ github.event.inputs.settings }}"
+          echo "authToken: ${{ github.event.inputs.authToken }}"
+          echo "ref: ${{ github.event.inputs.ref }}"
+          echo "signature: ${{ github.event.inputs.signature }}"
+          echo "command: ${{ github.event.inputs.command }}"
+          echo "testMode: ${{ github.event.inputs.testMode }}"
+          echo "=== END DEBUG ==="
+
       - name: Check Invoker
         id: check-invoker
         run: |
@@ -57,13 +71,13 @@ jobs:
           cat > /tmp/payload.json << 'PAYLOAD_EOF'
           ${{ github.event.inputs.eventPayload }}
           PAYLOAD_EOF
-          
+
           INVOKER=$(jq -r '.comment.user.login // "unknown"' /tmp/payload.json)
           REPO_OWNER="${{ github.repository_owner }}"
-          
+
           echo "Invoker: $INVOKER"
           echo "Repository Owner: $REPO_OWNER"
-          
+
           # Determine access mode based on invoker
           if [ "$INVOKER" = "$REPO_OWNER" ]; then
             echo "Self-invoked command detected - using FULL ACCESS"
@@ -72,7 +86,7 @@ jobs:
             echo "External invocation detected - using READ-ONLY ACCESS"
             echo "access_mode=read-only" >> $GITHUB_OUTPUT
           fi
-          
+
           echo "invoker=$INVOKER" >> $GITHUB_OUTPUT
 
   # Read-only job for external users
