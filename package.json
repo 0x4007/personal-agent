@@ -4,7 +4,7 @@
   "description": "Ubiquibot plugin template repository with TypeScript support.",
   "author": "Ubiquity DAO",
   "license": "MIT",
-  "main": "src/worker.ts",
+  "main": "src/index.ts",
   "type": "module",
   "engines": {
     "node": ">=20.10.0"
@@ -13,7 +13,6 @@
     "build": "tsc --project tsconfig.json",
     "build:action": "bun build-action.js",
     "build:bundle": "bun build-action.js",
-    "deploy": "wrangler deploy --env production",
     "format": "run-p format:*",
     "check-formatting": "run-p check-formatting:* format:cspell",
     "check-formatting:lint": "eslint --fix-dry-run",
@@ -31,7 +30,7 @@
     "test:security": "bunx audit-ci --moderate",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage --coverageDirectory=coverage",
-    "worker": "wrangler dev --env dev --port 4000"
+    "dev": "bun run src/index.ts"
   },
   "keywords": [
     "typescript",
@@ -57,6 +56,7 @@
     "@types/bun": "latest",
     "@types/jest": "^30.0.0",
     "@types/node": "22.12.0",
+    "@vercel/ncc": "^0.38.3",
     "cross-env": "^7.0.3",
     "cspell": "8.17.3",
     "eslint": "9.19.0",
@@ -70,8 +70,7 @@
     "prettier": "3.4.2",
     "ts-jest": "29.2.5",
     "typescript": "5.6.2",
-    "typescript-eslint": "8.22.0",
-    "wrangler": "3.102.0"
+    "typescript-eslint": "8.22.0"
   },
   "private": true
 }

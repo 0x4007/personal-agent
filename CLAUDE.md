@@ -116,7 +116,7 @@ bun run test
 ### Local Development
 
 ```bash
-bun run worker  # Starts Wrangler dev server on port 4000
+bun run dev  # Starts the development server
 ```
 
 ### Code Structure
@@ -124,7 +124,6 @@ bun run worker  # Starts Wrangler dev server on port 4000
 - `/src/handlers/` - Event handlers for different commands
 - `/src/handlers/claude-agent.ts` - Main Claude CLI integration
 - `/src/types/` - TypeScript type definitions
-- `/src/worker.ts` - Cloudflare Worker entry point
 - `/src/index.ts` - Main plugin logic
 - `/tests/` - Jest test suite with mocks
 
@@ -177,7 +176,7 @@ bun run worker  # Starts Wrangler dev server on port 4000
    - Platform-specific tokens as needed
 3. Configure access mode if needed (default is full access)
 4. Install UbiquityOS app on the fork for event routing
-5. Plugin auto-deploys via GitHub Actions to Cloudflare Workers
+5. Plugin auto-deploys via GitHub Actions
 6. Configure MCP servers for additional platforms
 
 ### Bridge Communication
