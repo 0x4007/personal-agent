@@ -5,120 +5,25 @@ on:
     inputs:
       stateId:
         description: "State Id"
-        # required: false
-        # default: "test-state-001"
       eventName:
         description: "Event Name"
-        # required: false
-        # default: "issue_comment.created"
       eventPayload:
-        description: "Event Payload (JSON string)"
-        # required: true
-        # default: '{"action":"created","issue":{"number":1,"title":"Test Issue"},"comment":{"id":1,"body":"@0x4007 Hello Claude! Can you explain what this personal agent does?","user":{"login":"test-user"}},"repository":{"name":"personal-agent","owner":{"login":"0x4007"}}}'
+        description: "Event Payload"
       settings:
         description: "Settings"
-        # required: false
-        # default: '{}'
       authToken:
         description: "Auth Token"
-        # required: false
-        # default: "test-auth-token"
       ref:
         description: "Ref"
-        # required: false
-        # default: "refs/heads/claude-integration"
       signature:
         description: "The kernel signature"
-        # required: false
-        # default: "test-signature"
       command:
         description: "Command from the Kernel"
         required: false
-        # default: "{}"
-      testMode:
-        description: "Enable test mode (bypass signature verification)"
-        type: boolean
-        default: true
 
 jobs:
-  # First job: Determine which access level to use
-  determine-access:
-    name: "Determine Access Level"
-    runs-on: ubuntu-latest
-    outputs:
-      access_mode: ${{ steps.check-invoker.outputs.access_mode }}
-      invoker: ${{ steps.check-invoker.outputs.invoker }}
-    steps:
-      - name: Debug Inputs
-        run: |
-          echo "=== DEBUG: Workflow Inputs ==="
-          echo "stateId: ${{ github.event.inputs.stateId }}"
-          echo "eventName: ${{ github.event.inputs.eventName }}"
-
-          # Properly serialize eventPayload JSON
-          echo "eventPayload (raw):"
-          cat << 'EOF'
-          ${{ github.event.inputs.eventPayload }}
-          EOF
-
-          echo ""
-          echo "eventPayload (formatted):"
-          cat << 'EOF' | jq '.' 2>/dev/null || echo "Invalid JSON"
-          ${{ github.event.inputs.eventPayload }}
-          EOF
-
-          echo ""
-          echo "settings:"
-          cat << 'EOF' | jq '.' 2>/dev/null || echo "${{ github.event.inputs.settings }}"
-          ${{ github.event.inputs.settings }}
-          EOF
-
-          echo ""
-          echo "authToken: ${{ github.event.inputs.authToken }}"
-          echo "ref: ${{ github.event.inputs.ref }}"
-          echo "signature: ${{ github.event.inputs.signature }}"
-
-          echo ""
-          echo "command:"
-          cat << 'EOF' | jq '.' 2>/dev/null || echo "${{ github.event.inputs.command }}"
-          ${{ github.event.inputs.command }}
-          EOF
-
-          echo ""
-          echo "testMode: ${{ github.event.inputs.testMode }}"
-          echo "=== END DEBUG ==="
-
-      - name: Check Invoker
-        id: check-invoker
-        run: |
-          # Parse the event payload to get the invoker
-          # Save payload to file to handle special characters
-          cat > /tmp/payload.json << 'PAYLOAD_EOF'
-          ${{ github.event.inputs.eventPayload }}
-          PAYLOAD_EOF
-
-          INVOKER=$(jq -r '.comment.user.login // "unknown"' /tmp/payload.json)
-          REPO_OWNER="${{ github.repository_owner }}"
-
-          echo "Invoker: $INVOKER"
-          echo "Repository Owner: $REPO_OWNER"
-
-          # Determine access mode based on invoker
-          if [ "$INVOKER" = "$REPO_OWNER" ]; then
-            echo "Self-invoked command detected - using FULL ACCESS"
-            echo "access_mode=full" >> $GITHUB_OUTPUT
-          else
-            echo "External invocation detected - using READ-ONLY ACCESS"
-            echo "access_mode=read-only" >> $GITHUB_OUTPUT
-          fi
-
-          echo "invoker=$INVOKER" >> $GITHUB_OUTPUT
-
-  # Read-only job for external users
-  compute-read-only:
-    name: "Personal Agent (Read-Only)"
-    needs: determine-access
-    if: needs.determine-access.outputs.access_mode == 'read-only'
+  compute:
+    name: "Personal Agent"
     runs-on: ubuntu-latest
     permissions: write-all
     environment: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && 'main' || 'development' }}
@@ -127,97 +32,23 @@ jobs:
       KERNEL_PUBLIC_KEY: ${{ secrets.KERNEL_PUBLIC_KEY }}
       LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
       AGENT_OWNER: ${{ github.repository_owner }}
-      USER_PAT: ${{ secrets.USER_PAT_READ }}  # READ-ONLY PAT
-      ACCESS_MODE: "read-only"
+      USER_PAT: ${{ secrets.USER_PAT }}
+      PI_URL: ${{ secrets.PI_URL }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Log Access Mode
-        run: |
-          echo "🔒 Running in READ-ONLY mode"
-          echo "Invoker: ${{ needs.determine-access.outputs.invoker }}"
-          echo "Access Mode: ${{ needs.determine-access.outputs.access_mode }}"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Claude CLI
-        run: |
-          echo "Installing Claude CLI..."
-          # Install Claude Code CLI via npm
-          npm install -g @anthropic-ai/claude-code
-          # Verify installation
-          which claude || echo "Claude binary location unknown"
-          echo "Claude CLI installed successfully"
+      - name: Install dependencies
+        run: npm ci || npm i
 
-      - name: Execute Personal Agent (Read-Only)
+      - name: Build
+        run: npm run build
+
+      - name: Execute plugin
         run: node ./dist/index.js
         id: plugin-name
-        env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          INPUT_STATEID: ${{ github.event.inputs.stateId }}
-          INPUT_EVENTNAME: ${{ github.event.inputs.eventName }}
-          INPUT_EVENTPAYLOAD: ${{ github.event.inputs.eventPayload }}
-          INPUT_SETTINGS: ${{ github.event.inputs.settings }}
-          INPUT_AUTHTOKEN: ${{ github.event.inputs.authToken }}
-          INPUT_REF: ${{ github.event.inputs.ref }}
-          INPUT_SIGNATURE: ${{ github.event.inputs.signature }}
-          INPUT_COMMAND: ${{ github.event.inputs.command }}
-          NODE_ENV: ${{ github.event.inputs.testMode == 'true' && 'local' || 'production' }}
-
-  # Full access job for self-invoked commands
-  compute-full:
-    name: "Personal Agent (Full Access)"
-    needs: determine-access
-    if: needs.determine-access.outputs.access_mode == 'full'
-    runs-on: ubuntu-latest
-    permissions: write-all
-    environment: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && 'main' || 'development' }}
-    env:
-      PLUGIN_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      KERNEL_PUBLIC_KEY: ${{ secrets.KERNEL_PUBLIC_KEY }}
-      LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
-      AGENT_OWNER: ${{ github.repository_owner }}
-      USER_PAT: ${{ secrets.USER_PAT_FULL }}  # FULL ACCESS PAT
-      ACCESS_MODE: "full"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log Access Mode
-        run: |
-          echo "🔓 Running in FULL ACCESS mode"
-          echo "Invoker: ${{ needs.determine-access.outputs.invoker }}"
-          echo "Access Mode: ${{ needs.determine-access.outputs.access_mode }}"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Claude CLI
-        run: |
-          echo "Installing Claude CLI..."
-          # Install Claude Code CLI via npm
-          npm install -g @anthropic-ai/claude-code
-          # Verify installation
-          which claude || echo "Claude binary location unknown"
-          echo "Claude CLI installed successfully"
-
-      - name: Execute Personal Agent (Full Access)
-        run: node ./dist/index.js
-        id: plugin-name
-        env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          INPUT_STATEID: ${{ github.event.inputs.stateId }}
-          INPUT_EVENTNAME: ${{ github.event.inputs.eventName }}
-          INPUT_EVENTPAYLOAD: ${{ github.event.inputs.eventPayload }}
-          INPUT_SETTINGS: ${{ github.event.inputs.settings }}
-          INPUT_AUTHTOKEN: ${{ github.event.inputs.authToken }}
-          INPUT_REF: ${{ github.event.inputs.ref }}
-          INPUT_SIGNATURE: ${{ github.event.inputs.signature }}
-          INPUT_COMMAND: ${{ github.event.inputs.command }}
-          NODE_ENV: ${{ github.event.inputs.testMode == 'true' && 'local' || 'production' }}
