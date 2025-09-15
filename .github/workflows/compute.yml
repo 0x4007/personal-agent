@@ -20,6 +20,10 @@ on:
       command:
         description: "Command from the Kernel"
         required: false
+      testMode:
+        description: "Enable test mode (bypass signature verification)"
+        type: boolean
+        default: true
 
 jobs:
   compute:
@@ -34,6 +38,7 @@ jobs:
       AGENT_OWNER: ${{ github.repository_owner }}
       USER_PAT: ${{ secrets.USER_PAT }}
       PI_URL: ${{ secrets.PI_URL }}
+      NODE_ENV: ${{ github.event.inputs.testMode == 'true' && 'local' || 'production' }}
 
     steps:
       - uses: actions/checkout@v4
