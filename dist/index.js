@@ -45,7 +45,8 @@ async function codexAgent(context) {
   }
   const piBaseUrl = process.env.PI_URL || env.PI_URL || "http://pi.local:3000";
   const timeoutMs = Number(process.env.PI_TIMEOUT_MS || env.PI_TIMEOUT_MS || 3e4);
-  const postToGh = process.env.PI_POST ? process.env.PI_POST === "true" : true;
+  const postToGh = process.env.PI_POST ? process.env.PI_POST === "true" : false;
+  const mentionOverride = process.env.PI_MENTION ?? "";
   const richPrompt = [
     `[mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}]`,
     `repo:${owner}/${repo}`,
@@ -79,7 +80,9 @@ ${wrapJson(eventJson)}` : basePrompt;
       timeout_ms: timeoutMs,
       repo: `${owner}/${repo}`,
       ...isPR ? { pr: issueNumber } : { issue: issueNumber },
-      post: postToGh
+      post: postToGh,
+      // best-effort: request server to avoid adding a leading mention
+      mention: mentionOverride
     };
     if (process.env.LOG_PI_BODY === "1") {
       logger.info("[codexAgent] Pi request body", { body: body2 });
@@ -95,7 +98,23 @@ ${wrapJson(eventJson)}` : basePrompt;
     }
     const data = await resp.json();
     if (!data.ok) throw new Error(`Pi /api/codex failed (code ${data.code}): ${data.error || "unknown error"}`);
-    logger.ok(`Pi handled Codex ${data.posted ? "and posted comment" : "without posting"}`);
+    if (!postToGh) {
+      const clean = sanitizeOutput(String(data.output || ""), agentOwner);
+      if (!clean.trim()) {
+        logger.info("[codexAgent] Empty sanitized output; skipping comment");
+        return;
+      }
+      await postGithubComment({
+        owner,
+        repo,
+        issueNumber,
+        body: clean,
+        token: process.env.PLUGIN_GITHUB_TOKEN || process.env.GITHUB_TOKEN || ""
+      }, logger);
+      logger.ok("Posted cleaned Codex response via GitHub API", { length: clean.length });
+    } else {
+      logger.ok(`Pi handled Codex ${data.posted ? "and posted comment" : "without posting"}`);
+    }
   } catch (error) {
     logger.error(`Pi Codex error: ${String(error)}`);
   }
@@ -116,6 +135,49 @@ function safeStringify(obj) {
 }
 function wrapJson(json) {
   return json ? "```json\n" + json + "\n```" : "";
+}
+function sanitizeOutput(output, agentOwner) {
+  let text = output || "";
+  const mentionRe = new RegExp(`^@${escapeReg(agentOwner)}\\b.*\\n?`, "i");
+  text = text.replace(mentionRe, "");
+  const lines = text.split(/\r?\n/);
+  const filtered = [];
+  for (const line of lines) {
+    if (/OpenAI Codex v/i.test(line)) continue;
+    if (/^-{2,}\s*workdir:/i.test(line)) continue;
+    if (/^model:\s*/i.test(line)) continue;
+    filtered.push(line);
+  }
+  text = filtered.join("\n").trim();
+  const assistantIdx = Math.max(text.lastIndexOf("assistant:"), text.lastIndexOf("Assistant:"));
+  if (assistantIdx !== -1) {
+    text = text.slice(assistantIdx + "assistant:".length).trim();
+  }
+  text = text.replace(new RegExp(`@${escapeReg(agentOwner)}\\b`, "ig"), agentOwner);
+  return text.trim();
+}
+function escapeReg(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+async function postGithubComment(params, logger) {
+  const { owner, repo, issueNumber, body, token } = params;
+  if (!token) throw new Error("Missing GitHub token to post comment");
+  const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "authorization": `Bearer ${token}`,
+      "accept": "application/vnd.github+json",
+      "content-type": "application/json",
+      "x-github-api-version": "2022-11-28"
+    },
+    body: JSON.stringify({ body })
+  });
+  if (!resp.ok) {
+    const txt = await safeText(resp);
+    throw new Error(`GitHub comment HTTP ${resp.status}: ${txt}`);
+  }
+  logger.info("[codexAgent] GitHub comment posted");
 }
 var init_codex_agent = __esm({
   "src/handlers/codex-agent.ts"() {

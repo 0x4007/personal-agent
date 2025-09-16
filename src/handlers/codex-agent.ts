@@ -38,7 +38,9 @@ export async function codexAgent(context: Context): Promise<void> {
 
   const piBaseUrl = process.env.PI_URL || env.PI_URL || "http://pi.local:3000";
   const timeoutMs = Number(process.env.PI_TIMEOUT_MS || env.PI_TIMEOUT_MS || 30000);
-  const postToGh = process.env.PI_POST ? process.env.PI_POST === "true" : true;
+  // Prefer posting via GitHub from compute to avoid server auto-mention wrappers
+  const postToGh = process.env.PI_POST ? process.env.PI_POST === "true" : false;
+  const mentionOverride = process.env.PI_MENTION ?? ""; // empty string disables mention on server if supported
 
   // Build prompts
   const richPrompt = [
@@ -75,6 +77,8 @@ export async function codexAgent(context: Context): Promise<void> {
           repo: `${owner}/${repo}`,
           ...(isPR ? { pr: issueNumber } : { issue: issueNumber }),
           post: postToGh,
+          // best-effort: request server to avoid adding a leading mention
+          mention: mentionOverride,
         };
     if (process.env.LOG_PI_BODY === "1") {
       logger.info("[codexAgent] Pi request body", { body });
@@ -91,7 +95,25 @@ export async function codexAgent(context: Context): Promise<void> {
     }
     const data = (await resp.json()) as { ok: boolean; code: number; output?: string; error?: string; posted?: boolean; gh?: any };
     if (!data.ok) throw new Error(`Pi /api/codex failed (code ${data.code}): ${data.error || "unknown error"}`);
-    logger.ok(`Pi handled Codex ${data.posted ? "and posted comment" : "without posting"}`);
+
+    if (!postToGh) {
+      // We will post selectively to avoid self-invocation. Strip mentions and boilerplate.
+      const clean = sanitizeOutput(String(data.output || ""), agentOwner);
+      if (!clean.trim()) {
+        logger.info("[codexAgent] Empty sanitized output; skipping comment");
+        return;
+      }
+      await postGithubComment({
+        owner,
+        repo,
+        issueNumber,
+        body: clean,
+        token: process.env.PLUGIN_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "",
+      }, logger);
+      logger.ok("Posted cleaned Codex response via GitHub API", { length: clean.length });
+    } else {
+      logger.ok(`Pi handled Codex ${data.posted ? "and posted comment" : "without posting"}`);
+    }
   } catch (error) {
     logger.error(`Pi Codex error: ${String(error)}`);
   }
@@ -116,4 +138,61 @@ function safeStringify(obj: unknown): string {
 function wrapJson(json: string): string {
   // Wrap in fenced block to preserve structure in LLM prompt
   return json ? "```json\n" + json + "\n```" : "";
+}
+
+function sanitizeOutput(output: string, agentOwner: string): string {
+  let text = output || "";
+  // Remove any leading username mention to avoid triggering ourselves
+  const mentionRe = new RegExp(`^@${escapeReg(agentOwner)}\\b.*\\n?`, "i");
+  text = text.replace(mentionRe, "");
+
+  // Drop common wrapper/header lines the server or CLI may prepend
+  const lines = text.split(/\r?\n/);
+  const filtered: string[] = [];
+  for (const line of lines) {
+    if (/OpenAI Codex v/i.test(line)) continue;
+    if (/^-{2,}\s*workdir:/i.test(line)) continue;
+    if (/^model:\s*/i.test(line)) continue;
+    filtered.push(line);
+  }
+  text = filtered.join("\n").trim();
+
+  // If conversation style markers exist, keep only the last assistant reply
+  const assistantIdx = Math.max(text.lastIndexOf("assistant:"), text.lastIndexOf("Assistant:"));
+  if (assistantIdx !== -1) {
+    text = text.slice(assistantIdx + "assistant:".length).trim();
+  }
+
+  // Ensure we don't accidentally re-mention
+  text = text.replace(new RegExp(`@${escapeReg(agentOwner)}\\b`, "ig"), agentOwner);
+
+  return text.trim();
+}
+
+function escapeReg(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function postGithubComment(
+  params: { owner: string; repo: string; issueNumber: number; body: string; token: string },
+  logger: { info: (...args: unknown[]) => void }
+): Promise<void> {
+  const { owner, repo, issueNumber, body, token } = params;
+  if (!token) throw new Error("Missing GitHub token to post comment");
+  const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "authorization": `Bearer ${token}`,
+      "accept": "application/vnd.github+json",
+      "content-type": "application/json",
+      "x-github-api-version": "2022-11-28",
+    },
+    body: JSON.stringify({ body }),
+  });
+  if (!resp.ok) {
+    const txt = await safeText(resp);
+    throw new Error(`GitHub comment HTTP ${resp.status}: ${txt}`);
+  }
+  logger.info("[codexAgent] GitHub comment posted");
 }
