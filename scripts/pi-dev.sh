@@ -35,6 +35,7 @@ run_on_pi() {
   BODY_=${BODY:-'@0x4007 remote test'}
   PI_URL_=${PI_URL:-http://127.0.0.1:3000}
   FETCH_TIMEOUT_MS_=${FETCH_TIMEOUT_MS:-15000}
+  PI_MINIMAL_=${PI_MINIMAL:-}
 
   echo "[pi-dev] Executing on $PI_USER@$PI_HOST with PI_URL=$PI_URL_" >&2
   # Escape single quotes for safe single-quoting
@@ -68,6 +69,7 @@ export ISSUE='$ISSUE_'
 export BODY='$BODY_ESC'
 export PI_URL='$PI_URL_'
 export NODE_ENV=local
+${PI_MINIMAL_:+export PI_MINIMAL='$PI_MINIMAL_'}
 ENV
   )
   FULL_SCRIPT="$REMOTE_ENV
@@ -96,7 +98,7 @@ curl_remote() {
   PROMPT_E=$(esc "$PROMPT_")
   CMD_E=$(esc "$CMD_")
   BODY_E=$(esc "$BODY_")
-  JSON_PAYLOAD=$(printf '{"prompt":"%s","comment":"%s","raw":"%s","timeout_ms":30000,"repo":"%s/%s","issue":%s,"post":true}\n' "$PROMPT_E" "$CMD_E" "$BODY_E" "$OWNER_" "$REPO_" "$ISSUE_")
+  JSON_PAYLOAD=$(printf '{"prompt":"%s","comment":"%s","raw_comment":"%s","timeout_ms":30000,"repo":"%s/%s","issue":%s,"post":true}\n' "$PROMPT_E" "$CMD_E" "$BODY_E" "$OWNER_" "$REPO_" "$ISSUE_")
   B64=$(printf '%s' "$JSON_PAYLOAD" | base64 | tr -d '\n')
   ssh $SSH_OPTS "$PI_USER@$PI_HOST" \
     "echo '$B64' | base64 -d | curl -sS -w '\nHTTP %{http_code}\n' -H 'content-type: application/json' -X POST '$PI_URL_/api/codex' --data-binary @-"
