@@ -43,7 +43,7 @@ export async function codexAgent(context: Context): Promise<void> {
   // Posting policy: only post when invoked by the owner; otherwise act read-only
   const shouldPost = isSelf;
   const postToGh = false; // we never ask the Pi server to post; compute may post if shouldPost
-  const mentionOverride = process.env.PI_MENTION ?? ""; // empty string disables mention on server if supported
+  const mentionOverride = parseMentionEnv(process.env.PI_MENTION);
 
   // Build prompts
   const richPrompt = [
@@ -80,14 +80,14 @@ export async function codexAgent(context: Context): Promise<void> {
       logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt, eventRawLen: rawLen, eventSanitizedLen: sanLen });
     }
     const body = minimal
-      ? { prompt, timeout_ms: timeoutMs, post: false }
+      ? { prompt, timeout_ms: timeoutMs, post: false, mention: mentionOverride }
       : {
           prompt,
           timeout_ms: timeoutMs,
           repo: `${owner}/${repo}`,
           ...(isPR ? { pr: issueNumber } : { issue: issueNumber }),
           post: false,
-          // best-effort: request server to avoid adding a leading mention
+          // Explicitly request no mention unless overridden via PI_MENTION
           mention: mentionOverride,
         };
     if (process.env.LOG_PI_BODY === "1") {
@@ -282,6 +282,15 @@ function writeRuntimeLogs(params: { prompt: string; body: unknown; payload: unkn
       // ignore
     }
   }
+}
+
+function parseMentionEnv(val: string | undefined): boolean | string {
+  if (val === undefined || val === "") return false;
+  const s = String(val).toLowerCase().trim();
+  if (s === "false" || s === "0" || s === "no" || s === "off") return false;
+  if (s === "true" || s === "1" || s === "yes" || s === "on") return true;
+  // any other non-empty string -> pass through (server may treat as custom mention)
+  return val;
 }
 
 function selectPatToken(opts: { isSelf: boolean }): string {

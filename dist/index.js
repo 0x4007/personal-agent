@@ -49,7 +49,7 @@ async function codexAgent(context) {
   const timeoutMs = Number(process.env.PI_TIMEOUT_MS || env.PI_TIMEOUT_MS || 3e4);
   const shouldPost = isSelf;
   const postToGh = false;
-  const mentionOverride = process.env.PI_MENTION ?? "";
+  const mentionOverride = parseMentionEnv(process.env.PI_MENTION);
   const richPrompt = [
     `[mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}]`,
     `repo:${owner}/${repo}`,
@@ -85,13 +85,13 @@ ${wrapJson(eventJson)}` : basePrompt;
       const sanLen = includeEventJson ? eventJson.length : 0;
       logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt, eventRawLen: rawLen, eventSanitizedLen: sanLen });
     }
-    const body2 = minimal ? { prompt, timeout_ms: timeoutMs, post: false } : {
+    const body2 = minimal ? { prompt, timeout_ms: timeoutMs, post: false, mention: mentionOverride } : {
       prompt,
       timeout_ms: timeoutMs,
       repo: `${owner}/${repo}`,
       ...isPR ? { pr: issueNumber } : { issue: issueNumber },
       post: false,
-      // best-effort: request server to avoid adding a leading mention
+      // Explicitly request no mention unless overridden via PI_MENTION
       mention: mentionOverride
     };
     if (process.env.LOG_PI_BODY === "1") {
@@ -250,6 +250,13 @@ function writeRuntimeLogs(params) {
     } catch {
     }
   }
+}
+function parseMentionEnv(val) {
+  if (val === void 0 || val === "") return false;
+  const s = String(val).toLowerCase().trim();
+  if (s === "false" || s === "0" || s === "no" || s === "off") return false;
+  if (s === "true" || s === "1" || s === "yes" || s === "on") return true;
+  return val;
 }
 function selectPatToken(opts) {
   const { isSelf } = opts;
