@@ -212,14 +212,14 @@ function writeRuntimeLogs(params) {
   }
 }
 function stripUrlFields(value) {
-  const urlKey = /(^|_)url$/i;
+  const redundantUrlKey = /_url$/i;
   if (Array.isArray(value)) {
     return value.map(stripUrlFields);
   }
   if (value && typeof value === "object") {
     const out = {};
     for (const [k, v] of Object.entries(value)) {
-      if (urlKey.test(k)) continue;
+      if (redundantUrlKey.test(k)) continue;
       out[k] = stripUrlFields(v);
     }
     return out;

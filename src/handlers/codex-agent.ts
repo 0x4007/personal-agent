@@ -238,14 +238,16 @@ function writeRuntimeLogs(params: { prompt: string; body: unknown; payload: unkn
 }
 
 function stripUrlFields(value: unknown): unknown {
-  const urlKey = /(^|_)url$/i; // matches 'url' and '*_url'
+  // Remove only keys that end with "_url" (e.g., html_url, forks_url),
+  // but keep keys named exactly "url".
+  const redundantUrlKey = /_url$/i;
   if (Array.isArray(value)) {
     return value.map(stripUrlFields);
   }
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (urlKey.test(k)) continue;
+      if (redundantUrlKey.test(k)) continue; // strip *_url
       out[k] = stripUrlFields(v);
     }
     return out;
