@@ -44,12 +44,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-          cache: "npm"
+      - name: Run personal agent
+        uses: ./dist/index.js
 
-      - name: Execute plugin
-        run: node dist/index.js
-        id: personal-agent
+      - name: Upload prompt artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-logs-${{ github.run_id }}
+          path: |
+            runtime-logs/**
+          if-no-files-found: ignore
