@@ -1,4 +1,6 @@
 import { Context } from "../types";
+import fs from "node:fs";
+import path from "node:path";
 
 /**
  * Calls the Raspberry Pi server to run Codex and posts the result back to GitHub.
@@ -82,6 +84,14 @@ export async function codexAgent(context: Context): Promise<void> {
         };
     if (process.env.LOG_PI_BODY === "1") {
       logger.info("[codexAgent] Pi request body", { body });
+    }
+
+    if (process.env.WRITE_PROMPT_FILE === "1") {
+      try {
+        writeRuntimeLogs({ prompt, body, payload });
+      } catch (e) {
+        // non-fatal: keep going even if file logging fails
+      }
     }
 
     const resp = await fetch(`${piBaseUrl}/api/codex`, {
@@ -195,4 +205,26 @@ async function postGithubComment(
     throw new Error(`GitHub comment HTTP ${resp.status}: ${txt}`);
   }
   logger.info("[codexAgent] GitHub comment posted");
+}
+
+function writeRuntimeLogs(params: { prompt: string; body: unknown; payload: unknown }) {
+  const dir = path.resolve(process.cwd(), "runtime-logs");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  const runId = process.env.GITHUB_RUN_ID || String(Date.now());
+
+  const promptPath = path.join(dir, `prompt-${runId}.txt`);
+  const bodyPath = path.join(dir, `pi-request-${runId}.json`);
+  const payloadPath = path.join(dir, `event-${runId}.json`);
+
+  fs.writeFileSync(promptPath, params.prompt, "utf8");
+  fs.writeFileSync(bodyPath, JSON.stringify(params.body, null, 2), "utf8");
+
+  if (process.env.WRITE_EVENT_FILE === "1") {
+    try {
+      fs.writeFileSync(payloadPath, JSON.stringify(params.payload, null, 2), "utf8");
+    } catch {
+      // ignore
+    }
+  }
 }

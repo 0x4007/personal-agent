@@ -47,6 +47,8 @@ jobs:
       LOG_PI_BODY: "1"
       LOG_PAYLOAD: "1"
       PROMPT_INCLUDE_EVENT: "1"
+      WRITE_PROMPT_FILE: "1"
+      WRITE_EVENT_FILE: "1"
       NODE_ENV: ${{ github.event.inputs.testMode == 'true' && 'local' || 'production' }}
 
     steps:
@@ -60,3 +62,12 @@ jobs:
       - name: Execute plugin
         run: node dist/index.js
         id: personal-agent
+
+      - name: Upload prompt artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-logs-${{ github.run_id }}
+          path: |
+            runtime-logs/**
+          if-no-files-found: ignore

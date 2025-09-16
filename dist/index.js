@@ -22,6 +22,8 @@ var codex_agent_exports = {};
 __export(codex_agent_exports, {
   codexAgent: () => codexAgent
 });
+import fs from "fs";
+import path2 from "path";
 async function codexAgent(context) {
   const { logger, payload, env } = context;
   const sender = payload.comment.user?.login;
@@ -86,6 +88,12 @@ ${wrapJson(eventJson)}` : basePrompt;
     };
     if (process.env.LOG_PI_BODY === "1") {
       logger.info("[codexAgent] Pi request body", { body: body2 });
+    }
+    if (process.env.WRITE_PROMPT_FILE === "1") {
+      try {
+        writeRuntimeLogs({ prompt, body: body2, payload });
+      } catch (e) {
+      }
     }
     const resp = await fetch(`${piBaseUrl}/api/codex`, {
       method: "POST",
@@ -179,6 +187,22 @@ async function postGithubComment(params, logger) {
   }
   logger.info("[codexAgent] GitHub comment posted");
 }
+function writeRuntimeLogs(params) {
+  const dir = path2.resolve(process.cwd(), "runtime-logs");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const runId = process.env.GITHUB_RUN_ID || String(Date.now());
+  const promptPath = path2.join(dir, `prompt-${runId}.txt`);
+  const bodyPath = path2.join(dir, `pi-request-${runId}.json`);
+  const payloadPath = path2.join(dir, `event-${runId}.json`);
+  fs.writeFileSync(promptPath, params.prompt, "utf8");
+  fs.writeFileSync(bodyPath, JSON.stringify(params.body, null, 2), "utf8");
+  if (process.env.WRITE_EVENT_FILE === "1") {
+    try {
+      fs.writeFileSync(payloadPath, JSON.stringify(params.payload, null, 2), "utf8");
+    } catch {
+    }
+  }
+}
 var init_codex_agent = __esm({
   "src/handlers/codex-agent.ts"() {
     "use strict";
@@ -196,7 +220,7 @@ function isIssueCommentEvent(context) {
 }
 
 // src/index.ts
-import fs from "fs";
+import fs2 from "fs";
 import { brotliDecompressSync } from "zlib";
 var cachedCodexAgent;
 async function loadCodexAgent() {
@@ -227,8 +251,8 @@ async function runPlugin(context) {
 async function mainFromActionsEnv() {
   try {
     const eventPath = process.env.GITHUB_EVENT_PATH;
-    if (!eventPath || !fs.existsSync(eventPath)) return;
-    const raw = fs.readFileSync(eventPath, "utf8");
+    if (!eventPath || !fs2.existsSync(eventPath)) return;
+    const raw = fs2.readFileSync(eventPath, "utf8");
     const evt = JSON.parse(raw);
     const inputs = evt?.inputs || {};
     const eventName = inputs.eventName || evt?.event_name || "issue_comment.created";
