@@ -40,8 +40,8 @@ export async function codexAgent(context: Context): Promise<void> {
 
   const piBaseUrl = process.env.PI_URL || env.PI_URL || "http://pi.local:3000";
   const timeoutMs = Number(process.env.PI_TIMEOUT_MS || env.PI_TIMEOUT_MS || 30000);
-  // Prefer posting via GitHub from compute to avoid server auto-mention wrappers
-  const postToGh = process.env.PI_POST ? process.env.PI_POST === "true" : false;
+  // Prefer server posting by default (true) to leverage Pi's gh auth unless explicitly disabled
+  const postToGh = process.env.PI_POST ? process.env.PI_POST === "true" : true;
   const mentionOverride = process.env.PI_MENTION ?? ""; // empty string disables mention on server if supported
 
   // Build prompts
@@ -125,7 +125,11 @@ export async function codexAgent(context: Context): Promise<void> {
         repo,
         issueNumber,
         body: clean,
-        token: process.env.PLUGIN_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "",
+        token:
+          process.env.PLUGIN_GITHUB_TOKEN ||
+          process.env.USER_PAT ||
+          process.env.GITHUB_TOKEN ||
+          "",
       }, logger);
       logger.ok("Posted cleaned Codex response via GitHub API", { length: clean.length });
     } else {

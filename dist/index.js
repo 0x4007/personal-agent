@@ -47,7 +47,7 @@ async function codexAgent(context) {
   }
   const piBaseUrl = process.env.PI_URL || env.PI_URL || "http://pi.local:3000";
   const timeoutMs = Number(process.env.PI_TIMEOUT_MS || env.PI_TIMEOUT_MS || 3e4);
-  const postToGh = process.env.PI_POST ? process.env.PI_POST === "true" : false;
+  const postToGh = process.env.PI_POST ? process.env.PI_POST === "true" : true;
   const mentionOverride = process.env.PI_MENTION ?? "";
   const richPrompt = [
     `[mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}]`,
@@ -124,7 +124,7 @@ ${wrapJson(eventJson)}` : basePrompt;
         repo,
         issueNumber,
         body: clean,
-        token: process.env.PLUGIN_GITHUB_TOKEN || process.env.GITHUB_TOKEN || ""
+        token: process.env.PLUGIN_GITHUB_TOKEN || process.env.USER_PAT || process.env.GITHUB_TOKEN || ""
       }, logger);
       logger.ok("Posted cleaned Codex response via GitHub API", { length: clean.length });
     } else {
@@ -297,14 +297,20 @@ async function mainFromActionsEnv() {
     }
     const logger = {
       info: (...args) => console.log("[info]", ...args),
-      ok: (msg, meta) => ({
-        logMessage: { diff: String(msg), type: "info" },
-        metadata: { message: String(msg), ...meta || {} }
-      }),
-      error: (msg, meta) => ({
-        logMessage: { diff: String(msg), type: "fatal" },
-        metadata: { message: String(msg), ...meta || {} }
-      })
+      ok: (msg, meta) => {
+        console.log("[ok]", msg, meta || "");
+        return {
+          logMessage: { diff: String(msg), type: "info" },
+          metadata: { message: String(msg), ...meta || {} }
+        };
+      },
+      error: (msg, meta) => {
+        console.error("[error]", msg, meta || "");
+        return {
+          logMessage: { diff: String(msg), type: "fatal" },
+          metadata: { message: String(msg), ...meta || {} }
+        };
+      }
     };
     const context = {
       eventName,

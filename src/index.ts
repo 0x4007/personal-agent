@@ -78,14 +78,20 @@ async function mainFromActionsEnv() {
       error: (msg: unknown, meta?: Record<string, unknown>) => LogReturn;
     } = {
       info: (...args: unknown[]) => console.log("[info]", ...args),
-      ok: (msg: unknown, meta?: Record<string, unknown>) => ({
-        logMessage: { diff: String(msg), type: "info" },
-        metadata: { message: String(msg), ...(meta || {}) },
-      }),
-      error: (msg: unknown, meta?: Record<string, unknown>) => ({
-        logMessage: { diff: String(msg), type: "fatal" },
-        metadata: { message: String(msg), ...(meta || {}) },
-      }),
+      ok: (msg: unknown, meta?: Record<string, unknown>) => {
+        console.log("[ok]", msg, meta || "");
+        return {
+          logMessage: { diff: String(msg), type: "info" },
+          metadata: { message: String(msg), ...(meta || {}) },
+        };
+      },
+      error: (msg: unknown, meta?: Record<string, unknown>) => {
+        console.error("[error]", msg, meta || "");
+        return {
+          logMessage: { diff: String(msg), type: "fatal" },
+          metadata: { message: String(msg), ...(meta || {}) },
+        };
+      },
     };
 
     const context: Record<string, unknown> = {
