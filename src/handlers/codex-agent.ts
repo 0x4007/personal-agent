@@ -161,30 +161,72 @@ function wrapJson(json: string): string {
 
 function sanitizeOutput(output: string, agentOwner: string): string {
   let text = output || "";
-  // Remove any leading username mention to avoid triggering ourselves
-  const mentionRe = new RegExp(`^@${escapeReg(agentOwner)}\\b.*\\n?`, "i");
-  text = text.replace(mentionRe, "");
 
-  // Drop common wrapper/header lines the server or CLI may prepend
+  // 1) Remove any @owner mentions anywhere to avoid re-trigger
+  const mentionAny = new RegExp(`(^|\\n)@${escapeReg(agentOwner)}\\b[^\\n]*\\n`, "ig");
+  text = text.replace(mentionAny, "\n");
+
+  // 2) Drop noisy lines from Codex transcript/logs/thinking
+  const dropPatterns: RegExp[] = [
+    /^[-]{2,}\s*$/, // separators like -------
+    /^OpenAI Codex v/i,
+    /^workdir:/i,
+    /^model:/i,
+    /^provider:/i,
+    /^approval:/i,
+    /^sandbox:/i,
+    /^reasoning( summaries)?:/i,
+    /^tokens used:/i,
+    /^Instructions:/i,
+    /^User instructions:/i,
+    /^User request:/i,
+    /^Planned (fetch|GitHub fetch)/i,
+    /^Fetch I.?d run:/i,
+    /^Command I.?d run:/i,
+    /^exec\b/i,
+    /^bash -lc/i,
+    /^codex$/i,
+    /^thinking$/i,
+    /^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[^\]]+\]/, // timestamped brackets
+  ];
   const lines = text.split(/\r?\n/);
-  const filtered: string[] = [];
+  const kept: string[] = [];
   for (const line of lines) {
-    if (/OpenAI Codex v/i.test(line)) continue;
-    if (/^-{2,}\s*workdir:/i.test(line)) continue;
-    if (/^model:\s*/i.test(line)) continue;
-    filtered.push(line);
+    const trimmed = line.trimEnd();
+    if (dropPatterns.some((re) => re.test(trimmed))) continue;
+    kept.push(trimmed);
   }
-  text = filtered.join("\n").trim();
+  text = kept.join("\n");
 
-  // If conversation style markers exist, keep only the last assistant reply
-  const assistantIdx = Math.max(text.lastIndexOf("assistant:"), text.lastIndexOf("Assistant:"));
-  if (assistantIdx !== -1) {
-    text = text.slice(assistantIdx + "assistant:".length).trim();
+  // 3) Collapse multiple blank lines
+  text = text.replace(/\n{3,}/g, "\n\n").trim();
+
+  // 4) If there are conversation markers, keep only the last assistant-like section
+  const markers = ["assistant:", "Assistant:"];
+  let cut = -1;
+  for (const m of markers) {
+    const idx = text.lastIndexOf(m);
+    cut = Math.max(cut, idx);
+  }
+  if (cut !== -1) {
+    text = text.slice(cut + "assistant:".length).trim();
   }
 
-  // Ensure we don't accidentally re-mention
-  text = text.replace(new RegExp(`@${escapeReg(agentOwner)}\\b`, "ig"), agentOwner);
+  // 5) Limit to the last 2 sentences to keep replies concise
+  const sentences = text
+    .replace(/\n+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .filter(Boolean);
+  if (sentences.length > 0) {
+    const lastTwo = sentences.slice(-2).join(" ").trim();
+    text = lastTwo;
+  }
 
+  // 6) Ensure we don't accidentally re-mention owner in the remainder
+  text = text.replace(new RegExp(`@${escapeReg(agentOwner)}\\b`, "ig"), agentOwner).trim();
+
+  // Hard cap to 600 chars
+  if (text.length > 600) text = text.slice(-600).trimStart();
   return text.trim();
 }
 

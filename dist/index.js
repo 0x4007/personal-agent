@@ -155,22 +155,57 @@ function wrapJson(json) {
 }
 function sanitizeOutput(output, agentOwner) {
   let text = output || "";
-  const mentionRe = new RegExp(`^@${escapeReg(agentOwner)}\\b.*\\n?`, "i");
-  text = text.replace(mentionRe, "");
+  const mentionAny = new RegExp(`(^|\\n)@${escapeReg(agentOwner)}\\b[^\\n]*\\n`, "ig");
+  text = text.replace(mentionAny, "\n");
+  const dropPatterns = [
+    /^[-]{2,}\s*$/,
+    // separators like -------
+    /^OpenAI Codex v/i,
+    /^workdir:/i,
+    /^model:/i,
+    /^provider:/i,
+    /^approval:/i,
+    /^sandbox:/i,
+    /^reasoning( summaries)?:/i,
+    /^tokens used:/i,
+    /^Instructions:/i,
+    /^User instructions:/i,
+    /^User request:/i,
+    /^Planned (fetch|GitHub fetch)/i,
+    /^Fetch I.?d run:/i,
+    /^Command I.?d run:/i,
+    /^exec\b/i,
+    /^bash -lc/i,
+    /^codex$/i,
+    /^thinking$/i,
+    /^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[^\]]+\]/
+    // timestamped brackets
+  ];
   const lines = text.split(/\r?\n/);
-  const filtered = [];
+  const kept = [];
   for (const line of lines) {
-    if (/OpenAI Codex v/i.test(line)) continue;
-    if (/^-{2,}\s*workdir:/i.test(line)) continue;
-    if (/^model:\s*/i.test(line)) continue;
-    filtered.push(line);
+    const trimmed = line.trimEnd();
+    if (dropPatterns.some((re) => re.test(trimmed))) continue;
+    kept.push(trimmed);
   }
-  text = filtered.join("\n").trim();
-  const assistantIdx = Math.max(text.lastIndexOf("assistant:"), text.lastIndexOf("Assistant:"));
-  if (assistantIdx !== -1) {
-    text = text.slice(assistantIdx + "assistant:".length).trim();
+  text = kept.join("\n");
+  text = text.replace(/\n{3,}/g, "\n\n").trim();
+  const markers = ["assistant:", "Assistant:"];
+  let cut = -1;
+  for (const m of markers) {
+    const idx = text.lastIndexOf(m);
+    cut = Math.max(cut, idx);
   }
-  text = text.replace(new RegExp(`@${escapeReg(agentOwner)}\\b`, "ig"), agentOwner);
+  if (cut !== -1) {
+    text = text.slice(cut + "assistant:".length).trim();
+  }
+  const sentences = text.replace(/\n+/g, " ").split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (sentences.length > 0) {
+    const lastTwo = sentences.slice(-2).join(" ").trim();
+    text = lastTwo;
+  }
+  text = text.replace(new RegExp(`@${escapeReg(agentOwner)}\\b`, "ig"), agentOwner).trim();
+  if (text.length > 600) text = text.slice(-600).trimStart();
   return text.trim();
 }
 function escapeReg(s) {
