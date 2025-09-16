@@ -12,6 +12,8 @@
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "bundle": "tsup src/action.ts --format esm --target node22 --sourcemap --out-dir dist --clean --no-splitting",
+    "bundle:local": "tsup scripts/local-run.ts --format esm --target node22 --sourcemap --out-dir dist --no-splitting",
+    "dev:local": "NODE_ENV=local node dist/local-run.js",
     "format": "run-p format:*",
     "check-formatting": "run-p check-formatting:* format:cspell",
     "check-formatting:lint": "eslint --fix-dry-run",
