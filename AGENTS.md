@@ -20,7 +20,7 @@ Rationale: We commit the compiled artifact to ensure zero network waits and subâ
 
 ## Entry Points
 
-- GitHub Actions entry: `dist/action.js` (ESM).
+- GitHub Actions entry: `dist/index.js` (ESM, single file). This is the ONLY runtime artifact the compute workflow executes.
 - Local harness for postâ€‘decode testing: `dist/local-run.js` (see tooling below).
 
 ## Tooling (added for debugging and Pi integration)
