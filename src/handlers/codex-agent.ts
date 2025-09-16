@@ -51,9 +51,22 @@ export async function codexAgent(context: Context): Promise<void> {
   ].join(" ");
   const minimalPrompt = command;
   const minimal = process.env.PI_MINIMAL === "1";
-  const prompt = minimal ? minimalPrompt : richPrompt;
+  // Optionally append the entire raw GitHub event payload to the prompt for full context
+  const includeEventJson = process.env.PROMPT_INCLUDE_EVENT === "1" || process.env.INCLUDE_GH_EVENT === "1";
+  const eventJson = includeEventJson ? safeStringify(payload) : "";
+  const basePrompt = minimal ? minimalPrompt : richPrompt;
+  const prompt = includeEventJson
+    ? `${basePrompt}\n\nFull GitHub event JSON (verbatim):\n\n\n${wrapJson(eventJson)}`
+    : basePrompt;
 
   try {
+    // Optional runtime logging of the incoming payload, full prompt and request body (gated by env)
+    if (process.env.LOG_PAYLOAD === "1") {
+      logger.info("[codexAgent] GH payload (raw)", { payload });
+    }
+    if (process.env.LOG_PROMPT === "1") {
+      logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt });
+    }
     const body = minimal
       ? { prompt, timeout_ms: timeoutMs, post: postToGh }
       : {
@@ -63,6 +76,9 @@ export async function codexAgent(context: Context): Promise<void> {
           ...(isPR ? { pr: issueNumber } : { issue: issueNumber }),
           post: postToGh,
         };
+    if (process.env.LOG_PI_BODY === "1") {
+      logger.info("[codexAgent] Pi request body", { body });
+    }
 
     const resp = await fetch(`${piBaseUrl}/api/codex`, {
       method: "POST",
@@ -87,4 +103,17 @@ async function safeText(resp: Response): Promise<string> {
   } catch {
     return "";
   }
+}
+
+function safeStringify(obj: unknown): string {
+  try {
+    return JSON.stringify(obj);
+  } catch (e) {
+    return String(obj);
+  }
+}
+
+function wrapJson(json: string): string {
+  // Wrap in fenced block to preserve structure in LLM prompt
+  return json ? "```json\n" + json + "\n```" : "";
 }

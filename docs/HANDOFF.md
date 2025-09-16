@@ -1,122 +1,126 @@
-# Personal Agent — Handoff Notes (Pi + CI)
+# Personal Agent — Handoff (CI + Pi + Bun)
 
-This document hands off the current debugging state, tooling, and workflow for the GitHub personal agent that talks to the Raspberry Pi server at `pi.local:3000`.
+This document hands off the current state, goals, and quick commands to continue the same task with a new LLM session.
 
 ## TL;DR
 
-- CI executes the committed bundle in `dist/` directly. Do not install deps or build in `compute.yml`.
-- The plugin sends a request to the Pi server’s `/api/codex`. The server then either:
-  - runs `codex exec <prompt>` and posts to GitHub itself; or
-  - directly posts a provided raw comment (`comment` or `raw_comment`).
-- We added a “local-run” harness and a Pi sync runner to test the post‑decompression path locally and on the Pi.
-- “Code 143” responses come from the Codex CLI process (terminated/timeout). A shorter “minimal prompt” path avoids this.
+- CI executes only the committed bundle: `dist/index.js` (+ `dist/index.js.map`). Never install deps or build in compute.
+- Local dev uses Bun to run TS directly (no local bundling).
+- Pi sync is done via GitHub (clone/pull) for revision integrity; remote runs also use Bun.
+- Codex rich prompts on the Pi can timeout (`code=143`). Minimal prompts or direct `raw_comment` posting are reliable. We are keeping full prompts by default (no `PI_MINIMAL`) and will hand‑tune them once the system is stable.
 
-## What’s in the repo now
+Logging toggles for production debugging:
+- `DEBUG_EVENT=1` → log workflow_dispatch inputs and decoded eventPayload in compute logs.
+- `DEBUG_EVENT_RAW=1` → log raw JSON from `GITHUB_EVENT_PATH`.
+- `LOG_PROMPT=1` → log the full constructed prompt (length + content).
+- `LOG_PI_BODY=1` → log the exact JSON body posted to Pi `/api/codex`.
 
-- CI policy: `AGENTS.md` documents that `compute.yml` must NOT install deps or build; it must run the committed bundle only.
-- Bundling: `tsup` compiles `src/action.ts` to `dist/action.js`.
-- Local harness: `scripts/local-run.ts` compiles to `dist/local-run.js` (skips Actions’ decoding/decompression and calls `runPlugin` directly).
-- Pi helpers: `scripts/pi-dev.sh` provides `pi:all/sync/run/curl/probe` utilities for rapid Pi-side iteration and API probing.
-- Request tuning in `src/handlers/codex-agent.ts` via env:
-  - `PI_URL` (default `http://pi.local:3000`)
-  - `PI_TIMEOUT_MS` (server timeout payload)
-  - `PI_POST` (boolean – whether the server should post to GH)
-  - `PI_MINIMAL=1` (switches to a shorter prompt body)
+## Current Source of Truth
 
-## The Pi server contract
+- Single runtime entry: `dist/index.js` (ESM) — compute uses `node dist/index.js`.
+- Dist policy: ONLY `dist/index.js` and `dist/index.js.map` are committed (enforced in `AGENTS.md`).
+- Auto-bundle workflow keeps `dist/` up-to-date on every push.
 
-File: `~/repos/pi-agent/server/kv_server.ts`
+## Key Files
+
+- Compute workflow: `.github/workflows/compute.yml:1`
+  - Runs Node 22, sets `PI_TIMEOUT_MS=900000` (15m), executes `node dist/index.js`.
+
+- Auto-bundle workflow: `.github/workflows/bundle-dist.yml:1`
+  - On every push: `npm ci && npm run bundle`, commits `dist/index.js` + map if changed.
+
+- Entry + runner: `src/index.ts:1`
+  - Exports `runPlugin`.
+  - Implements a lightweight Actions runner that reads `GITHUB_EVENT_PATH`, decodes `eventPayload` (Brotli+base64 or JSON), and calls `runPlugin` — no `@actions/*` or plugin SDK at runtime.
+
+- Handler: `src/handlers/codex-agent.ts:1`
+  - Env knobs: `PI_URL` (default `http://pi.local:3000`), `PI_TIMEOUT_MS`, `PI_POST`, `PI_MINIMAL`.
+  - Minimal prompt uses the raw command; full prompt includes repo/issue/pr context.
+  - Calls Pi `/api/codex` and logs status.
+  - Optional debug logs: `LOG_PROMPT=1` (full prompt), `LOG_PI_BODY=1` (request body with `timeout_ms`).
+
+- Local harness: `scripts/local-run.ts:1`
+  - Basic logger and comment handler; `REAL_PI` toggles real fetch; `FETCH_TIMEOUT_MS` adds client timeout.
+
+- Pi Git sync/run: `scripts/pi-git.sh:1`
+  - `setup` (clone), `pull` (reset to origin/<branch>), `run` (Bun harness on the Pi).
+  - Ensures `~/.bun/bin` in PATH for non-interactive shells.
+
+- Pi probes + curl: `scripts/pi-dev.sh:1`
+  - `probe` → `/` and `/api/codex` OPTIONS/POST checks.
+  - `curl` → posts a JSON payload to `/api/codex`. Currently sends `raw_comment` with `repo/issue/post:true` for deterministic E2E.
+
+- Policy: `AGENTS.md:1`
+  - Compute must never install/build.
+  - Only `dist/index.js` and `dist/index.js.map` are committed artifacts.
+  - Local dev uses Bun; Pi sync via Git.
+
+## Pi Server Contract (for reference)
 
 - Route: `POST /api/codex`
 - Accepts JSON:
-  - `prompt: string` → executes `codex exec <prompt>` and uses stdout as `output`
-  - `comment` or `raw_comment: string` → bypasses codex and uses this string as `output`
-  - `repo: "OWNER/REPO"`, `issue: number` or `pr: number` → provides posting target
-  - `post: boolean` → defaults true when target present
-  - `timeout_ms: number` → optional; enforced via `AbortController`
-  - `mention: string|false` → mention prefix when posting (defaults to `@AGENT_OWNER`/`@0x4007`)
+  - `prompt: string` → executes `codex exec <prompt>` → `output` is stdout
+  - `comment` or `raw_comment: string` → bypass Codex and use string as `output`
+  - `repo: "OWNER/REPO"`, `issue` or `pr`, `post: boolean`, `timeout_ms`, `mention`
 - Response: `{ ok, code, output, error, posted, gh }`
-  - `code` is the subprocess exit code for `codex exec` (0 is success). `143` indicates termination/timeout.
+  - `code=143` indicates Codex terminated/timeout.
 
-Key observations:
-- `{"prompt":"hi"}` returns quickly (200 OK).
-- `{"comment":"@0x4007 hi"}` or `{"raw_comment":"@0x4007 hi"}` returns 200 and can post.
-- Heavier “rich” prompts can lead to `code=143` (terminated) — tighten prompts or raise timeouts.
+## Verified Flows
 
-## Local + Pi workflows
+- Local (stubbed): `npm run dev:local` → OK.
+- Local→Pi via Bun (real Pi): `npm run dev:pi` with `REAL_PI=1` → OK reachability.
+- Pi git sync + run: `npm run pi:pull-run`
+  - Results: minimal mode: OK; full (rich) prompt may return `code=143`.
+- Deterministic server-post E2E:
+  - `npm run pi:curl` (sends only `raw_comment` with `repo/issue/post:true`) → 200 OK + posted:true.
+  - Example link (successful): appears under the target issue `ubiquity/.github-private#22`.
 
-Local harness (stubbed fetch by default):
-- Build: `npm run bundle:local`
-- Run against stub: `npm run dev:local`
-- Run against Pi: `npm run dev:pi` (sets REAL_PI=1 and defaults for OWNER/REPO/ISSUE/BODY)
+## Triggering CI / Kernel Dispatch
 
-Pi remote tooling (rsync + run on Pi):
-- All-in-one: `npm run pi:all` (bundle, rsync, run on Pi)
-- Separate: `npm run pi:sync` then `npm run pi:run`
-- Probe API: `npm run pi:probe` (tests `/`, `/api/codex` options, and POST shapes)
-- Raw curl: `npm run pi:curl` (builds JSON safely and POSTs via ssh)
+1) Post a comment starting with `@0x4007` on `https://github.com/ubiquity/.github-private/issues/22`.
+2) Monitor compute workflow: `gh run list -R 0x4007/personal-agent --workflow "Personal Agent Compute"`.
+3) Logs: `gh run view <id> -R 0x4007/personal-agent --log`.
 
-Environment toggles used by the harness / plugin:
-- `AGENT_OWNER` → login expected in the issue comment (`@AGENT_OWNER`)
-- `OWNER`, `REPO`, `ISSUE`, `BODY` → GitHub target and comment body; `BODY` must start with `@AGENT_OWNER`
-- `PI_URL` → `http://pi.local:3000` by default in local harness
-- Timeouts: `FETCH_TIMEOUT_MS` (client wrapper) and `PI_TIMEOUT_MS` (payload to server)
-- Posting: `PI_POST=false` to avoid posting while testing
-- Prompt minimalization: `PI_MINIMAL=1` to switch to a compact prompt body
+## Practical Commands
 
-## Prompt strategy for “Hello World” verification
+- Build dist (for CI artifact): `npm run bundle`
+- Local dev (stubbed): `npm run dev:local`
+- Local dev to Pi: `npm run dev:pi`
+- Pi setup/pull/run:
+  - `npm run pi:setup`
+  - `npm run pi:pull`
+  - `npm run pi:run` (Bun on Pi)
+  - `npm run pi:pull-run`
+- Pi probes/curl:
+  - `npm run pi:probe`
+  - `npm run pi:curl` (uses `raw_comment` server-post path)
 
-There are two viable approaches to verifiably post a known comment:
+## Open Issues / Next Steps
 
-1) Server‑posted comment (recommended)
-- Send a prompt that returns exactly `Hello world` (or similar) and include target `repo` + `issue`.
-- The server will post `output` to GitHub using its own `gh` invocation.
-- Example request body to Pi:
-  - `{ "prompt": "Hello world", "repo": "OWNER/REPO", "issue": 22, "post": true }`
-- This avoids asking Codex to do any auth; the server already has `gh` and handles it.
+- Codex timeouts (code 143) on rich prompts (expected while we stabilize)
+  - Ensure `timeout_ms` is correctly passed. In CI, `PI_TIMEOUT_MS=900000` is set. For Pi runs via Bun, `scripts/pi-git.sh run` now exports `PI_TIMEOUT_MS` (default 15m).
+  - Keep full prompt default (no `PI_MINIMAL`), hand‑tune later.
+  - Consider adding a `TEST_HELLO=1` path to bypass Codex for smoke tests while retaining full prompt for normal operations.
 
-2) Codex‑executed `gh` auth + post (if you explicitly want Codex to do it)
-- Craft the prompt to instruct the Codex toolchain to:
-  - authenticate with `gh` (e.g., `gh auth login --with-token`), using an environment variable provided by the runner
-  - post `Hello world` with `gh issue comment ...`
-- Notes:
-  - You must supply a token to the process that `codex exec` can reach (e.g., `GH_TOKEN` env) and allow shell/tool execution in the Codex runtime.
-  - Our current Pi server already posts via `gh`; duplicating this inside Codex is not necessary and may conflict.
-  - If you proceed, disable server posting (`post: false`) so you only validate Codex’s path.
+- CI dist enforcement
+  - Ensure no extra files are committed under `dist/`.
 
-Suggested minimal prompt text to yield a known output that the server will post:
+- Optional: add a small test harness that mocks the Pi server for local integration tests.
 
-> Hello world
+## Notes
 
-If you absolutely require the Codex path to perform `gh` auth + post, a sample instruction prompt:
+- CI must never install deps or build in compute — it runs the committed dist only.
+- Local development uses Bun (TS on the fly).
+- Pi sync via Git ensures revision integrity (no ad-hoc rsync of partial files).
 
-> Authenticate with `gh` using the token provided in the environment as `GH_TOKEN`, then post a GitHub issue comment that contains exactly:
-> 
-> Hello world
-> 
-> Do not include any extra words or formatting in the comment body.
+## Where to review the full prompt and inputs
 
-Again, this is only relevant if you’re testing Codex’s own ability to run shell tools; the server already does posting.
+- Full prompt: enable `LOG_PROMPT=1` to print it from `src/handlers/codex-agent.ts`.
+- Pi request body: enable `LOG_PI_BODY=1` to see the JSON sent to `/api/codex` (includes `timeout_ms`).
+- Kernel inputs in production: enable `DEBUG_EVENT=1` (and optionally `DEBUG_EVENT_RAW=1`) to see workflow inputs and the decoded `eventPayload` as received by compute.
 
-## Current plugin behavior (src/handlers/codex-agent.ts)
+## Pi server’s timeout handling (for reference)
 
-- Mentioned env:
-  - `PI_URL`, `PI_TIMEOUT_MS`, `PI_POST`, `PI_MINIMAL`
-- Minimal mode prompt is the issue comment’s command text (no extra wrapper). This proved to avoid Codex CLI timeouts while still returning quickly.
-- Minimal mode request body: `{ prompt, timeout_ms, post }`
-- Full mode body includes `repo` + `issue`/`pr` to have the server post the output itself.
-
-## Next steps / open items
-
-- If you want to always force a “Hello world” post for verification during E2E, consider a `TEST_HELLO=1` env to bypass Codex entirely and call Pi with `comment: "Hello world"`.
-- If you must exercise Codex’s `gh` path, plumb `GH_TOKEN` into the Codex runtime (via the Pi server) and set `post: false` in the payload so the server doesn’t also post.
-- Optionally raise `PI_TIMEOUT_MS` for heavier prompts, but favor shorter prompts to avoid `code=143` from the Codex process.
-- Add more server logging when `code !== 0` (include captured `stderr`) to speed diagnosis of Codex failures.
-
-## Known pitfalls
-
-- CI must never install deps or build. Changes are committed to `dist/`.
-- On the Pi, Node may be lazy-loaded via nvm; the remote runner sources nvm and PATH before invoking `node`.
-- The server expects `comment` or `raw_comment` – not `raw`.
-- `code=143` from the server indicates the Codex subprocess was terminated (timeout or signal). Tighten prompt or adjust timeouts.
-
+- The Pi server reads `timeout_ms` from the request body and uses an `AbortController` to terminate `codex exec` after that duration.
+- If `timeout_ms` is not provided, it does not set a timeout.
+- A response with `code=143` indicates the `codex` subprocess terminated (timeout/signal).

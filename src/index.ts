@@ -61,6 +61,16 @@ async function mainFromActionsEnv() {
     const eventName = inputs.eventName || evt?.event_name || "issue_comment.created";
     const payload = await decodeEventPayload(inputs.eventPayload);
 
+    // Optional verbose logging to inspect exactly what Kernel passed in
+    if (process.env.DEBUG_EVENT_RAW === "1") {
+      console.log("[debug] GITHUB_EVENT_PATH raw JSON:");
+      console.log(raw);
+    }
+    if (process.env.DEBUG_EVENT === "1") {
+      console.log("[debug] workflow_dispatch inputs:", JSON.stringify(inputs));
+      try { console.log("[debug] decoded eventPayload:", JSON.stringify(payload)); } catch { console.log("[debug] decoded eventPayload: <non-json>"); }
+    }
+
     type LogReturn = { logMessage: { diff: string; type: string }; metadata: Record<string, unknown> };
     const logger: {
       info: (...args: unknown[]) => void;

@@ -39,6 +39,13 @@ jobs:
       USER_PAT: ${{ secrets.USER_PAT }}
       PI_URL: ${{ secrets.PI_URL }}
       PI_TIMEOUT_MS: 900000
+      # Debug toggles to capture full inputs and prompt/body in logs
+      DEBUG_EVENT: "1"
+      DEBUG_EVENT_RAW: "1"
+      LOG_PROMPT: "1"
+      LOG_PI_BODY: "1"
+      LOG_PAYLOAD: "1"
+      PROMPT_INCLUDE_EVENT: "1"
       NODE_ENV: ${{ github.event.inputs.testMode == 'true' && 'local' || 'production' }}
 
     steps:

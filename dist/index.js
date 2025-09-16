@@ -58,8 +58,22 @@ Instructions: Provide a helpful, concise answer. Consider repo code and ${isPR ?
   ].join(" ");
   const minimalPrompt = command;
   const minimal = process.env.PI_MINIMAL === "1";
-  const prompt = minimal ? minimalPrompt : richPrompt;
+  const includeEventJson = process.env.PROMPT_INCLUDE_EVENT === "1" || process.env.INCLUDE_GH_EVENT === "1";
+  const eventJson = includeEventJson ? safeStringify(payload) : "";
+  const basePrompt = minimal ? minimalPrompt : richPrompt;
+  const prompt = includeEventJson ? `${basePrompt}
+
+Full GitHub event JSON (verbatim):
+
+
+${wrapJson(eventJson)}` : basePrompt;
   try {
+    if (process.env.LOG_PAYLOAD === "1") {
+      logger.info("[codexAgent] GH payload (raw)", { payload });
+    }
+    if (process.env.LOG_PROMPT === "1") {
+      logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt });
+    }
     const body2 = minimal ? { prompt, timeout_ms: timeoutMs, post: postToGh } : {
       prompt,
       timeout_ms: timeoutMs,
@@ -67,6 +81,9 @@ Instructions: Provide a helpful, concise answer. Consider repo code and ${isPR ?
       ...isPR ? { pr: issueNumber } : { issue: issueNumber },
       post: postToGh
     };
+    if (process.env.LOG_PI_BODY === "1") {
+      logger.info("[codexAgent] Pi request body", { body: body2 });
+    }
     const resp = await fetch(`${piBaseUrl}/api/codex`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -89,6 +106,16 @@ async function safeText(resp) {
   } catch {
     return "";
   }
+}
+function safeStringify(obj) {
+  try {
+    return JSON.stringify(obj);
+  } catch (e) {
+    return String(obj);
+  }
+}
+function wrapJson(json) {
+  return json ? "```json\n" + json + "\n```" : "";
 }
 var init_codex_agent = __esm({
   "src/handlers/codex-agent.ts"() {
@@ -144,6 +171,18 @@ async function mainFromActionsEnv() {
     const inputs = evt?.inputs || {};
     const eventName = inputs.eventName || evt?.event_name || "issue_comment.created";
     const payload = await decodeEventPayload(inputs.eventPayload);
+    if (process.env.DEBUG_EVENT_RAW === "1") {
+      console.log("[debug] GITHUB_EVENT_PATH raw JSON:");
+      console.log(raw);
+    }
+    if (process.env.DEBUG_EVENT === "1") {
+      console.log("[debug] workflow_dispatch inputs:", JSON.stringify(inputs));
+      try {
+        console.log("[debug] decoded eventPayload:", JSON.stringify(payload));
+      } catch {
+        console.log("[debug] decoded eventPayload: <non-json>");
+      }
+    }
     const logger = {
       info: (...args) => console.log("[info]", ...args),
       ok: (msg, meta) => ({

@@ -29,7 +29,8 @@ curl_remote() {
   PROMPT_E=$(esc "$PROMPT_")
   CMD_E=$(esc "$CMD_")
   BODY_E=$(esc "$BODY_")
-  JSON_PAYLOAD=$(printf '{"prompt":"%s","comment":"%s","raw_comment":"%s","timeout_ms":30000,"repo":"%s/%s","issue":%s,"post":true}\n' "$PROMPT_E" "$CMD_E" "$BODY_E" "$OWNER_" "$REPO_" "$ISSUE_")
+  # Send only raw_comment to force server posting without Codex
+  JSON_PAYLOAD=$(printf '{"raw_comment":"%s","timeout_ms":30000,"repo":"%s/%s","issue":%s,"post":true}\n' "$BODY_E" "$OWNER_" "$REPO_" "$ISSUE_")
   B64=$(printf '%s' "$JSON_PAYLOAD" | base64 | tr -d '\n')
   ssh $SSH_OPTS "$PI_USER@$PI_HOST" \
     "echo '$B64' | base64 -d | curl -sS -w '\nHTTP %{http_code}\n' -H 'content-type: application/json' -X POST '$PI_URL_/api/codex' --data-binary @-"
