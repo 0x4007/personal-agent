@@ -1,9 +1,7 @@
 import type { Context } from "./types";
 import { isIssueCommentEvent } from "./types/typeguards";
-import { createActionsPlugin } from "@ubiquity-os/plugin-sdk";
-import { customOctokit } from "@ubiquity-os/plugin-sdk/octokit";
-import { LOG_LEVEL, type LogLevel } from "@ubiquity-os/ubiquity-os-logger";
-import { Env, envSchema, PluginSettings, pluginSettingsSchema, SupportedEvents } from "./types";
+import fs from "node:fs";
+import { brotliDecompressSync } from "node:zlib";
 
 type CodexAgent = typeof import("./handlers/codex-agent") extends { codexAgent: infer Fn } ? Fn : never;
 
@@ -49,17 +47,74 @@ export async function runPlugin(context: Context) {
 
 // Execute as a GitHub Actions plugin when run directly.
 // This preserves the single entry point at dist/index.js.
-export default createActionsPlugin<PluginSettings, Env, null, SupportedEvents>(
-  (context) => {
-    context.octokit = new customOctokit({ auth: context.env.USER_PAT });
-    return runPlugin(context as unknown as Context);
-  },
-  {
-    logLevel: (process.env.LOG_LEVEL as LogLevel) || LOG_LEVEL.INFO,
-    settingsSchema: pluginSettingsSchema,
-    envSchema: envSchema,
-    ...(process.env.KERNEL_PUBLIC_KEY && { kernelPublicKey: process.env.KERNEL_PUBLIC_KEY }),
-    postCommentOnError: true,
-    bypassSignatureVerification: process.env.NODE_ENV === "local",
+// Lightweight Actions runner: reads workflow_dispatch inputs from GITHUB_EVENT_PATH
+// and invokes runPlugin with decoded payload. No @actions/* or plugin-sdk needed.
+async function mainFromActionsEnv() {
+  try {
+    const eventPath = process.env.GITHUB_EVENT_PATH;
+    if (!eventPath || !fs.existsSync(eventPath)) return; // not running in Actions
+
+    const raw = fs.readFileSync(eventPath, "utf8");
+    const evt = JSON.parse(raw);
+    const inputs = evt?.inputs || {};
+
+    const eventName = inputs.eventName || evt?.event_name || "issue_comment.created";
+    const payload = await decodeEventPayload(inputs.eventPayload);
+
+    type LogReturn = { logMessage: { diff: string; type: string }; metadata: Record<string, unknown> };
+    const logger: {
+      info: (...args: unknown[]) => void;
+      ok: (msg: unknown, meta?: Record<string, unknown>) => LogReturn;
+      error: (msg: unknown, meta?: Record<string, unknown>) => LogReturn;
+    } = {
+      info: (...args: unknown[]) => console.log("[info]", ...args),
+      ok: (msg: unknown, meta?: Record<string, unknown>) => ({
+        logMessage: { diff: String(msg), type: "info" },
+        metadata: { message: String(msg), ...(meta || {}) },
+      }),
+      error: (msg: unknown, meta?: Record<string, unknown>) => ({
+        logMessage: { diff: String(msg), type: "fatal" },
+        metadata: { message: String(msg), ...(meta || {}) },
+      }),
+    };
+
+    const context: Record<string, unknown> = {
+      eventName,
+      payload,
+      env: process.env,
+      logger,
+      commentHandler: { postComment: async () => null },
+    };
+
+    await runPlugin(context as Context);
+  } catch (e) {
+    console.error("[fatal] Actions runner error", e);
+    process.exit(1);
   }
-);
+}
+
+async function decodeEventPayload(maybe: unknown): Promise<unknown> {
+  if (!maybe) return {};
+  if (typeof maybe === "object") return maybe as Record<string, unknown>;
+  if (typeof maybe === "string") {
+    // Try brotli+base64 → JSON, else parse as JSON string
+    try {
+      const buf = Buffer.from(maybe, "base64");
+      const decompressed = brotliDecompressSync(buf);
+      return JSON.parse(decompressed.toString("utf8"));
+    } catch {
+      try {
+        return JSON.parse(maybe as string);
+      } catch {
+        return { raw: maybe };
+      }
+    }
+  }
+  return {};
+}
+
+// Auto-run when executed directly in Actions
+mainFromActionsEnv().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
