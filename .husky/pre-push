@@ -1,0 +1,48 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Pre-push hook to trigger a Pi pull AFTER the push completes.
+# We can't run post-push (Git lacks it), so we spawn a background watcher
+# that waits until the new commit appears on the remote, then calls the
+# LAN sync script to pull on the Pi.
+
+[ -n "$CI" ] && exit 0
+[ "$DISABLE_PI_AGENT_SYNC" = "1" ] && exit 0
+
+# Required: where your local pi-agent clone lives
+if [ -z "$PI_AGENT_LOCAL_DIR" ]; then
+  # Not configured; do nothing
+  exit 0
+fi
+
+if [ ! -d "$PI_AGENT_LOCAL_DIR/.git" ]; then
+  # Not a git repo; do nothing
+  exit 0
+fi
+
+REMOTE=${REMOTE:-origin}
+BRANCH=${BRANCH:-$(git -C "$PI_AGENT_LOCAL_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)}
+SHA=$(git -C "$PI_AGENT_LOCAL_DIR" rev-parse "$BRANCH" 2>/dev/null)
+
+# If we can't determine SHA/branch, bail quietly
+[ -z "$BRANCH" ] && exit 0
+[ -z "$SHA" ] && exit 0
+
+# Background watcher: poll remote until the pushed SHA is visible, then pull on Pi
+(
+  set -e
+  # Wait up to ~2 minutes
+  i=0
+  while [ $i -lt 60 ]; do
+    if git -C "$PI_AGENT_LOCAL_DIR" ls-remote "$REMOTE" "$BRANCH" 2>/dev/null | grep -q "$SHA"; then
+      BRANCH="$BRANCH" PI_USER="${PI_USER:-pi}" PI_HOST="${PI_HOST:-pi.local}" \
+        scripts/pi-agent-git.sh pull || true
+      exit 0
+    fi
+    sleep 2
+    i=$((i+1))
+  done
+) >/dev/null 2>&1 &
+
+exit 0
+
