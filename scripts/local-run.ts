@@ -48,7 +48,7 @@ async function main() {
     },
     env: {
       AGENT_OWNER: AGENT,
-      PI_URL: process.env.PI_URL || "http://localhost:3000",
+      PI_URL: process.env.PI_URL || "http://pi.local:3000",
     },
     logger,
     commentHandler,
@@ -61,4 +61,3 @@ main().catch((e) => {
   console.error("[local-run error]", e);
   process.exit(1);
 });
-
