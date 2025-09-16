@@ -3,25 +3,22 @@
 # that waits until the new commit appears on the remote, then calls the
 # LAN sync script to pull on the Pi.
 
+
 [ -n "$CI" ] && exit 0
 [ "$DISABLE_PI_AGENT_SYNC" = "1" ] && exit 0
 
-# Required: where your local pi-agent clone lives
-if [ -z "$PI_AGENT_LOCAL_DIR" ]; then
-  # Not configured; do nothing
+# Hardcoded local path to your pi-agent clone on this machine
+LOCAL_PI_AGENT_DIR="/Users/nv/repos/pi-agent"
+REMOTE="origin"
+
+# Validate repo exists
+if [ ! -d "$LOCAL_PI_AGENT_DIR/.git" ]; then
   exit 0
 fi
 
-if [ ! -d "$PI_AGENT_LOCAL_DIR/.git" ]; then
-  # Not a git repo; do nothing
-  exit 0
-fi
+BRANCH=$(git -C "$LOCAL_PI_AGENT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)
+SHA=$(git -C "$LOCAL_PI_AGENT_DIR" rev-parse "$BRANCH" 2>/dev/null)
 
-REMOTE=${REMOTE:-origin}
-BRANCH=${BRANCH:-$(git -C "$PI_AGENT_LOCAL_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)}
-SHA=$(git -C "$PI_AGENT_LOCAL_DIR" rev-parse "$BRANCH" 2>/dev/null)
-
-# If we can't determine SHA/branch, bail quietly
 [ -z "$BRANCH" ] && exit 0
 [ -z "$SHA" ] && exit 0
 
@@ -31,9 +28,9 @@ SHA=$(git -C "$PI_AGENT_LOCAL_DIR" rev-parse "$BRANCH" 2>/dev/null)
   # Wait up to ~2 minutes
   i=0
   while [ $i -lt 60 ]; do
-    if git -C "$PI_AGENT_LOCAL_DIR" ls-remote "$REMOTE" "$BRANCH" 2>/dev/null | grep -q "$SHA"; then
-      BRANCH="$BRANCH" PI_USER="${PI_USER:-pi}" PI_HOST="${PI_HOST:-pi.local}" \
-        scripts/pi-agent-git.sh pull || true
+    if git -C "$LOCAL_PI_AGENT_DIR" ls-remote "$REMOTE" "$BRANCH" 2>/dev/null | grep -q "$SHA"; then
+      BRANCH="$BRANCH" PI_USER="pi" PI_HOST="pi.local" scripts/pi-agent-git.sh pull || true
+      PI_USER="pi" PI_HOST="pi.local" scripts/pi-agent-git.sh restart || true
       exit 0
     fi
     sleep 2

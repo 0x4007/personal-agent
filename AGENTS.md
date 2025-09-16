@@ -63,12 +63,17 @@ Notes:
     - `npm run pi-agent:pull` → fetch/reset to `origin/<branch>` if it exists; otherwise stays/creates the local branch.
     - `npm run pi-agent:restart` → best‑effort restart of `pi-agent-deno.service`.
 
-- `scripts/push-pi-agent.sh` → Push local pi-agent then trigger Pi pull (simulated post-push).
-  - Requires: `PI_AGENT_LOCAL_DIR` env to point to your local pi-agent clone.
-  - Usage:
-    - `PI_AGENT_LOCAL_DIR=/path/to/pi-agent npm run pi-agent:push` (uses current branch)
-    - Override: `REMOTE=origin BRANCH=main npm run pi-agent:push`
-  - Rationale: Git has no native post-push hook client-side. This wrapper ensures the push completes first, then calls `pi-agent-git.sh pull` with the same branch.
+- `scripts/push-pi-agent.sh` → Optional CLI to push local pi-agent then trigger Pi pull (post-push style).
+  - Defaults are fine; no env required on maintainer’s machine.
+  - Rationale: Git has no native post-push hook client-side. The Husky pre-push hook below is preferred.
+
+- Husky pre-push (local only): `.husky/pre-push`
+  - Hardcoded for the maintainer’s LAN setup:
+    - Local pi-agent path: `/Users/nv/repos/pi-agent`
+    - Remote: `origin`
+    - Pi host: `pi@pi.local`
+  - Behavior: after a push completes (detected via `ls-remote` seeing the new SHA), it pulls the same branch on the Pi using `scripts/pi-agent-git.sh pull` with `BRANCH=<current>`, then restarts the `pi-agent-deno.service` (best‑effort).
+  - Non-blocking and silent if local path isn’t present. Set `DISABLE_PI_AGENT_SYNC=1` to skip.
 
 ## Pi Server Contract (for reference)
 
