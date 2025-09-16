@@ -51,9 +51,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build plugin
+      - name: Build plugin (tsup)
         run: npm run bundle
 
       - name: Execute plugin
-        run: node dist/index.js
+        run: node dist/action.js
         id: personal-agent

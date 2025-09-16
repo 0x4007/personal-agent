@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
-    "bundle": "tsup src/index.ts --format esm --target node22 --sourcemap --out-dir dist --clean --no-splitting",
+    "bundle": "tsup src/action.ts --format esm --target node22 --sourcemap --out-dir dist --clean --no-splitting",
     "format": "run-p format:*",
     "check-formatting": "run-p check-formatting:* format:cspell",
     "check-formatting:lint": "eslint --fix-dry-run",
