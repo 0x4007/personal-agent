@@ -20,8 +20,18 @@ Rationale: We commit the compiled artifact to ensure zero network waits and subâ
 
 ## Entry Points
 
-- GitHub Actions entry: `dist/index.js` (ESM, single file). This is the ONLY runtime artifact the compute workflow executes.
-- Local harness for postâ€‘decode testing: `dist/local-run.js` (see tooling below).
+- GitHub Actions entry: `dist/index.js` (ESM, single file).
+- Source map: `dist/index.js.map`.
+
+ONLY these two files are accepted compile outputs. Nothing more, nothing less.
+They MUST be committed and present in every commit on the GitHub repo so that
+Actions can directly invoke `node dist/index.js` without installing dependencies
+or building.
+
+Notes:
+- Do not commit any other artifacts under `dist/`.
+- Developer helpers (like the local harness) must not write to `dist/`. Use a
+  separate outDir (e.g., `dev-dist/`) for any local-only bundles.
 
 ## Tooling (added for debugging and Pi integration)
 

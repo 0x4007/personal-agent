@@ -4,11 +4,6 @@ on:
   push:
     branches:
       - "**"
-    paths:
-      - "src/**"
-      - "scripts/local-run.ts"
-      - "package.json"
-      - "tsconfig.json"
 
 jobs:
   build-and-commit:

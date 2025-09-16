@@ -146,8 +146,14 @@ async function mainFromActionsEnv() {
     const payload = await decodeEventPayload(inputs.eventPayload);
     const logger = {
       info: (...args) => console.log("[info]", ...args),
-      ok: (msg, meta) => ({ logMessage: { diff: String(msg), type: "info" }, metadata: { message: String(msg), ...meta || {} } }),
-      error: (msg, meta) => ({ logMessage: { diff: String(msg), type: "fatal" }, metadata: { message: String(msg), ...meta || {} } })
+      ok: (msg, meta) => ({
+        logMessage: { diff: String(msg), type: "info" },
+        metadata: { message: String(msg), ...meta || {} }
+      }),
+      error: (msg, meta) => ({
+        logMessage: { diff: String(msg), type: "fatal" },
+        metadata: { message: String(msg), ...meta || {} }
+      })
     };
     const context = {
       eventName,

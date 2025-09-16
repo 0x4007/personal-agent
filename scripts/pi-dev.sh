@@ -10,19 +10,19 @@ PI_DEST="${PI_DEST:-/home/pi/tmp/personal-agent-local-run}"
 SSH_OPTS=${SSH_OPTS:-"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"}
 
 ensure_bundle() {
-  if [[ ! -f dist/local-run.js ]]; then
-    echo "[pi-dev] dist/local-run.js missing; bundling..." >&2
+  if [[ ! -f dev-dist/local-run.js ]]; then
+    echo "[pi-dev] dev-dist/local-run.js missing; bundling..." >&2
     npm run --silent bundle:local
   fi
 }
 
 sync_to_pi() {
-  echo "[pi-dev] Syncing dist/local-run.js to $PI_USER@$PI_HOST:$PI_DEST/" >&2
+  echo "[pi-dev] Syncing dev-dist/local-run.js to $PI_USER@$PI_HOST:$PI_DEST/" >&2
   ssh $SSH_OPTS "$PI_USER@$PI_HOST" "mkdir -p '$PI_DEST'"
   if command -v rsync >/dev/null 2>&1; then
-    rsync -avz -e "ssh $SSH_OPTS" dist/local-run.js dist/local-run.js.map "$PI_USER@$PI_HOST:$PI_DEST/"
+    rsync -avz -e "ssh $SSH_OPTS" dev-dist/local-run.js dev-dist/local-run.js.map "$PI_USER@$PI_HOST:$PI_DEST/"
   else
-    scp $SSH_OPTS dist/local-run.js dist/local-run.js.map "$PI_USER@$PI_HOST:$PI_DEST/"
+    scp $SSH_OPTS dev-dist/local-run.js dev-dist/local-run.js.map "$PI_USER@$PI_HOST:$PI_DEST/"
   fi
 }
 

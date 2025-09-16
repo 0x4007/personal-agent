@@ -16,3 +16,5 @@ cypress/screenshots
 script.ts
 .wrangler
 test-dashboard.md
+# Local-only build outputs
+dev-dist/

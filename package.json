@@ -11,8 +11,8 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
-    "bundle": "tsup --entry.index=src/index.ts --entry.local-run=scripts/local-run.ts --format esm --platform node --target node22 --sourcemap --out-dir dist --clean --no-splitting",
-    "bundle:local": "tsup scripts/local-run.ts --format esm --platform node --target node22 --sourcemap --out-dir dist --no-splitting --clean=false",
+    "bundle": "tsup --entry.index=src/index.ts --format esm --platform node --target node22 --sourcemap --out-dir dist --clean --no-splitting",
+    "bundle:local": "tsup scripts/local-run.ts --format esm --platform node --target node22 --sourcemap --out-dir dev-dist --no-splitting --clean",
     "dev:local": "NODE_ENV=local node dist/local-run.js",
     "dev:pi": "REAL_PI=1 NODE_ENV=local AGENT_OWNER=0x4007 OWNER=ubiquity REPO=.github-private ISSUE=22 BODY='@0x4007 local to pi' node dist/local-run.js",
     "pi:all": "npm run bundle:local && scripts/pi-dev.sh all",
