@@ -48,6 +48,8 @@ Notes:
 - `scripts/pi-git.sh` → Git-based sync on the Raspberry Pi (preferred).
   - `npm run pi:setup` → clone repo on Pi if missing.
   - `npm run pi:pull` → fetch/reset to origin for the current branch on Pi.
+  - `npm run pi:run` → run the local harness on the Pi via Bun (REAL_PI=1)
+  - `npm run pi:pull-run` → pull then run
 
 - `scripts/pi-dev.sh` → Pi API probes only (no file sync).
   - `npm run pi:probe` → probes `/`, `/api`, `/api/codex` with multiple payloads.
