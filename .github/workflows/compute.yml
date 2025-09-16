@@ -39,6 +39,9 @@ jobs:
       USER_PAT: ${{ secrets.USER_PAT }}
       PI_URL: ${{ secrets.PI_URL }}
       PI_TIMEOUT_MS: 900000
+      # Enable writing prompt/body/event files for artifact collection
+      WRITE_PROMPT_FILE: "1"
+      WRITE_EVENT_FILE: "1"
       NODE_ENV: ${{ github.event.inputs.testMode == 'true' && 'local' || 'production' }}
 
     steps:
