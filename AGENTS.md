@@ -55,6 +55,14 @@ Notes:
   - `npm run pi:probe` → probes `/`, `/api`, `/api/codex` with multiple payloads.
   - `npm run pi:curl` → crafts JSON safely and POSTs via ssh (base64 to avoid quoting issues).
 
+- `scripts/pi-agent-git.sh` → Git-based sync for the Raspberry Pi server repo (pi-agent).
+  - Defaults: repo `https://github.com/0x4007/pi-agent.git`, dir `/home/pi/repos/pi-agent`, branch `main`.
+  - Branch selection: if `BRANCH` is set, it is used. Otherwise, if `PI_AGENT_LOCAL_DIR` points to a local `pi-agent` clone, the current branch from that repo is used. If neither is provided, falls back to `main`.
+  - Commands:
+    - `npm run pi-agent:setup` → clone on Pi if missing, checkout/reset to branch.
+    - `npm run pi-agent:pull` → fetch/reset to `origin/<branch>` if it exists; otherwise stays/creates the local branch.
+    - `npm run pi-agent:restart` → best‑effort restart of `pi-agent-deno.service`.
+
 ## Pi Server Contract (for reference)
 
 - Route: `POST /api/codex` accepts JSON:
