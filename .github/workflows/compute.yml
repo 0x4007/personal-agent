@@ -49,5 +49,5 @@ jobs:
           node-version: '22'
 
       - name: Execute plugin
-        run: node --experimental-strip-types ./src/index.ts
+        run: node --experimental-strip-types ./src
         id: personal-agent
