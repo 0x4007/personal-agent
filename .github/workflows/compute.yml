@@ -48,6 +48,12 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build plugin
+        run: npm run bundle
+
       - name: Execute plugin
-        run: node --experimental-strip-types ./src
+        run: node dist/index.js
         id: personal-agent
