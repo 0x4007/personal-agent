@@ -6,14 +6,20 @@ import { runPlugin } from "../src/index";
 // Minimal logger + comment handler stubs compatible with our usage
 const logger = {
   info: (...args: any[]) => console.log("[info]", ...args),
-  ok: (msg: any, meta?: any) => ({
-    logMessage: { diff: String(msg), type: "info" },
-    metadata: { message: String(msg), ...meta },
-  }),
-  error: (msg: any, meta?: any) => ({
-    logMessage: { diff: String(msg), type: "fatal" },
-    metadata: { message: String(msg), ...meta },
-  }),
+  ok: (msg: any, meta?: any) => {
+    console.log("[ok]", msg, meta ?? "");
+    return {
+      logMessage: { diff: String(msg), type: "info" },
+      metadata: { message: String(msg), ...meta },
+    };
+  },
+  error: (msg: any, meta?: any) => {
+    console.error("[error]", msg, meta ?? "");
+    return {
+      logMessage: { diff: String(msg), type: "fatal" },
+      metadata: { message: String(msg), ...meta },
+    };
+  },
 };
 
 const commentHandler = {
@@ -23,12 +29,28 @@ const commentHandler = {
   },
 };
 
-// Optional: stub fetch unless REAL_PI is set
+// Wrap fetch: stub when REAL_PI unset; otherwise add timeout + logging
+const originalFetch: typeof fetch | undefined = (globalThis as any).fetch;
+const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 15000);
+
 if (!process.env.REAL_PI) {
-  globalThis.fetch = (async (input: any, init?: any) => {
-    console.log("[stub fetch]", input);
+  (globalThis as any).fetch = (async (input: any, init?: any) => {
+    console.log("[stub fetch]", input, init?.method || "GET");
     const body = JSON.stringify({ ok: true, code: 200, posted: false });
     return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+  }) as any;
+} else if (originalFetch) {
+  (globalThis as any).fetch = (async (input: any, init?: any) => {
+    console.log("[fetch]", input, init?.method || "GET");
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(new Error("timeout")), FETCH_TIMEOUT_MS);
+    try {
+      const res = await originalFetch(input, { ...(init || {}), signal: ac.signal });
+      console.log("[fetch status]", res.status);
+      return res;
+    } finally {
+      clearTimeout(timer);
+    }
   }) as any;
 }
 

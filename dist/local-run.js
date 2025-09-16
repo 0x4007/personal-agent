@@ -117,14 +117,20 @@ async function runPlugin(context) {
 // scripts/local-run.ts
 var logger = {
   info: (...args) => console.log("[info]", ...args),
-  ok: (msg, meta) => ({
-    logMessage: { diff: String(msg), type: "info" },
-    metadata: { message: String(msg), ...meta }
-  }),
-  error: (msg, meta) => ({
-    logMessage: { diff: String(msg), type: "fatal" },
-    metadata: { message: String(msg), ...meta }
-  })
+  ok: (msg, meta) => {
+    console.log("[ok]", msg, meta ?? "");
+    return {
+      logMessage: { diff: String(msg), type: "info" },
+      metadata: { message: String(msg), ...meta }
+    };
+  },
+  error: (msg, meta) => {
+    console.error("[error]", msg, meta ?? "");
+    return {
+      logMessage: { diff: String(msg), type: "fatal" },
+      metadata: { message: String(msg), ...meta }
+    };
+  }
 };
 var commentHandler = {
   postComment: async (_ctx, message) => {
@@ -132,11 +138,26 @@ var commentHandler = {
     return null;
   }
 };
+var originalFetch = globalThis.fetch;
+var FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 15e3);
 if (!process.env.REAL_PI) {
   globalThis.fetch = (async (input, init) => {
-    console.log("[stub fetch]", input);
+    console.log("[stub fetch]", input, init?.method || "GET");
     const body = JSON.stringify({ ok: true, code: 200, posted: false });
     return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+  });
+} else if (originalFetch) {
+  globalThis.fetch = (async (input, init) => {
+    console.log("[fetch]", input, init?.method || "GET");
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(new Error("timeout")), FETCH_TIMEOUT_MS);
+    try {
+      const res = await originalFetch(input, { ...init || {}, signal: ac.signal });
+      console.log("[fetch status]", res.status);
+      return res;
+    } finally {
+      clearTimeout(timer);
+    }
   });
 }
 var AGENT = process.env.AGENT_OWNER || "0x4007";
