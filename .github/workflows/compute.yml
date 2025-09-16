@@ -36,7 +36,8 @@ jobs:
       KERNEL_PUBLIC_KEY: ${{ secrets.KERNEL_PUBLIC_KEY }}
       LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
       AGENT_OWNER: ${{ github.repository_owner }}
-      USER_PAT: ${{ secrets.USER_PAT }}
+      USER_PAT_FULL: ${{ secrets.PAT_FULL }}
+      USER_PAT_READ: ${{ secrets.PAT_READ }}
       PI_URL: ${{ secrets.PI_URL }}
       PI_TIMEOUT_MS: 900000
       # Enable writing prompt/body/event files for artifact collection

@@ -21,8 +21,8 @@ export async function codexAgent(context: Context): Promise<void> {
   const body = String(payload.comment.body || "");
   const agentOwner = env.AGENT_OWNER;
 
-  const isReadOnly = (process.env.ACCESS_MODE || "read-only") === "read-only";
-  const accessLevel = isReadOnly ? "read-only" : "full";
+  const isSelf = sender && agentOwner && String(sender).toLowerCase() === String(agentOwner).toLowerCase();
+  const accessLevel = isSelf ? "full" : "read-only";
 
   logger.info(`Executing codexAgent`, { sender, repo, issueNumber, owner, agentOwner, accessLevel });
 
@@ -40,8 +40,9 @@ export async function codexAgent(context: Context): Promise<void> {
 
   const piBaseUrl = process.env.PI_URL || env.PI_URL || "http://pi.local:3000";
   const timeoutMs = Number(process.env.PI_TIMEOUT_MS || env.PI_TIMEOUT_MS || 30000);
-  // Prefer server posting by default (true) to leverage Pi's gh auth unless explicitly disabled
-  const postToGh = process.env.PI_POST ? process.env.PI_POST === "true" : true;
+  // Posting policy: only post when invoked by the owner; otherwise act read-only
+  const shouldPost = isSelf;
+  const postToGh = false; // we never ask the Pi server to post; compute may post if shouldPost
   const mentionOverride = process.env.PI_MENTION ?? ""; // empty string disables mention on server if supported
 
   // Build prompts
@@ -79,13 +80,13 @@ export async function codexAgent(context: Context): Promise<void> {
       logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt, eventRawLen: rawLen, eventSanitizedLen: sanLen });
     }
     const body = minimal
-      ? { prompt, timeout_ms: timeoutMs, post: postToGh }
+      ? { prompt, timeout_ms: timeoutMs, post: false }
       : {
           prompt,
           timeout_ms: timeoutMs,
           repo: `${owner}/${repo}`,
           ...(isPR ? { pr: issueNumber } : { issue: issueNumber }),
-          post: postToGh,
+          post: false,
           // best-effort: request server to avoid adding a leading mention
           mention: mentionOverride,
         };
@@ -113,27 +114,24 @@ export async function codexAgent(context: Context): Promise<void> {
     const data = (await resp.json()) as { ok: boolean; code: number; output?: string; error?: string; posted?: boolean; gh?: any };
     if (!data.ok) throw new Error(`Pi /api/codex failed (code ${data.code}): ${data.error || "unknown error"}`);
 
-    if (!postToGh) {
+    if (shouldPost) {
       // We will post selectively to avoid self-invocation. Strip mentions and boilerplate.
       const clean = sanitizeOutput(String(data.output || ""), agentOwner);
       if (!clean.trim()) {
         logger.info("[codexAgent] Empty sanitized output; skipping comment");
         return;
       }
+      const token = selectPatToken({ isSelf });
       await postGithubComment({
         owner,
         repo,
         issueNumber,
         body: clean,
-        token:
-          process.env.PLUGIN_GITHUB_TOKEN ||
-          process.env.USER_PAT ||
-          process.env.GITHUB_TOKEN ||
-          "",
+        token,
       }, logger);
       logger.ok("Posted cleaned Codex response via GitHub API", { length: clean.length });
     } else {
-      logger.ok(`Pi handled Codex ${data.posted ? "and posted comment" : "without posting"}`);
+      logger.ok("Read-only mode: not posting comment.");
     }
   } catch (error) {
     logger.error(`Pi Codex error: ${String(error)}`);
@@ -242,6 +240,29 @@ function writeRuntimeLogs(params: { prompt: string; body: unknown; payload: unkn
       // ignore
     }
   }
+}
+
+function selectPatToken(opts: { isSelf: boolean }): string {
+  const { isSelf } = opts;
+  // Prefer explicit PAT secrets; fall back to PLUGIN_GITHUB_TOKEN as last resort
+  if (isSelf) {
+    return (
+      process.env.USER_PAT_FULL ||
+      process.env.PAT_FULL ||
+      process.env.USER_PAT ||
+      process.env.PLUGIN_GITHUB_TOKEN ||
+      process.env.GITHUB_TOKEN ||
+      ""
+    );
+  }
+  return (
+    process.env.USER_PAT_READ ||
+    process.env.PAT_READ ||
+    process.env.USER_PAT ||
+    process.env.PLUGIN_GITHUB_TOKEN ||
+    process.env.GITHUB_TOKEN ||
+    ""
+  );
 }
 
 function stripUrlFields(value: unknown): unknown {

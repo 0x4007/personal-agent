@@ -33,8 +33,8 @@ async function codexAgent(context) {
   const owner = payload.repository.owner.login;
   const body = String(payload.comment.body || "");
   const agentOwner = env.AGENT_OWNER;
-  const isReadOnly = (process.env.ACCESS_MODE || "read-only") === "read-only";
-  const accessLevel = isReadOnly ? "read-only" : "full";
+  const isSelf = sender && agentOwner && String(sender).toLowerCase() === String(agentOwner).toLowerCase();
+  const accessLevel = isSelf ? "full" : "read-only";
   logger.info(`Executing codexAgent`, { sender, repo, issueNumber, owner, agentOwner, accessLevel });
   if (!body.trim().startsWith(`@${agentOwner}`)) {
     logger.info(`Comment does not start with @${agentOwner}`, { body });
@@ -47,7 +47,8 @@ async function codexAgent(context) {
   }
   const piBaseUrl = process.env.PI_URL || env.PI_URL || "http://pi.local:3000";
   const timeoutMs = Number(process.env.PI_TIMEOUT_MS || env.PI_TIMEOUT_MS || 3e4);
-  const postToGh = process.env.PI_POST ? process.env.PI_POST === "true" : true;
+  const shouldPost = isSelf;
+  const postToGh = false;
   const mentionOverride = process.env.PI_MENTION ?? "";
   const richPrompt = [
     `[mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}]`,
@@ -84,12 +85,12 @@ ${wrapJson(eventJson)}` : basePrompt;
       const sanLen = includeEventJson ? eventJson.length : 0;
       logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt, eventRawLen: rawLen, eventSanitizedLen: sanLen });
     }
-    const body2 = minimal ? { prompt, timeout_ms: timeoutMs, post: postToGh } : {
+    const body2 = minimal ? { prompt, timeout_ms: timeoutMs, post: false } : {
       prompt,
       timeout_ms: timeoutMs,
       repo: `${owner}/${repo}`,
       ...isPR ? { pr: issueNumber } : { issue: issueNumber },
-      post: postToGh,
+      post: false,
       // best-effort: request server to avoid adding a leading mention
       mention: mentionOverride
     };
@@ -113,22 +114,23 @@ ${wrapJson(eventJson)}` : basePrompt;
     }
     const data = await resp.json();
     if (!data.ok) throw new Error(`Pi /api/codex failed (code ${data.code}): ${data.error || "unknown error"}`);
-    if (!postToGh) {
+    if (shouldPost) {
       const clean = sanitizeOutput(String(data.output || ""), agentOwner);
       if (!clean.trim()) {
         logger.info("[codexAgent] Empty sanitized output; skipping comment");
         return;
       }
+      const token = selectPatToken({ isSelf });
       await postGithubComment({
         owner,
         repo,
         issueNumber,
         body: clean,
-        token: process.env.PLUGIN_GITHUB_TOKEN || process.env.USER_PAT || process.env.GITHUB_TOKEN || ""
+        token
       }, logger);
       logger.ok("Posted cleaned Codex response via GitHub API", { length: clean.length });
     } else {
-      logger.ok(`Pi handled Codex ${data.posted ? "and posted comment" : "without posting"}`);
+      logger.ok("Read-only mode: not posting comment.");
     }
   } catch (error) {
     logger.error(`Pi Codex error: ${String(error)}`);
@@ -213,6 +215,13 @@ function writeRuntimeLogs(params) {
     } catch {
     }
   }
+}
+function selectPatToken(opts) {
+  const { isSelf } = opts;
+  if (isSelf) {
+    return process.env.USER_PAT_FULL || process.env.PAT_FULL || process.env.USER_PAT || process.env.PLUGIN_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
+  }
+  return process.env.USER_PAT_READ || process.env.PAT_READ || process.env.USER_PAT || process.env.PLUGIN_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
 }
 function stripUrlFields(value) {
   const redundantUrlKey = /_url$/i;
