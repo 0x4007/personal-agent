@@ -67,7 +67,7 @@ case "$MODE" in
     AGENT_OWNER_=${AGENT_OWNER:-0x4007}
     OWNER_=${OWNER:-ubiquity}
     REPO_=${REPO:-.github-private}
-    ISSUE_=${ISSUE:-22}
+    ISSUE_=${ISSUE:-23}
     BODY_=${BODY:-'@0x4007 remote test'}
     PI_URL_=${PI_URL:-http://127.0.0.1:3000}
     FETCH_TIMEOUT_MS_=${FETCH_TIMEOUT_MS:-15000}

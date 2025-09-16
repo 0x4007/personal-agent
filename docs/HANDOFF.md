@@ -73,11 +73,11 @@ Logging toggles for production debugging:
   - Results: minimal mode: OK; full (rich) prompt may return `code=143`.
 - Deterministic server-post E2E:
   - `npm run pi:curl` (sends only `raw_comment` with `repo/issue/post:true`) → 200 OK + posted:true.
-  - Example link (successful): appears under the target issue `ubiquity/.github-private#22`.
+  - Example link (successful): appears under the target issue `ubiquity/.github-private#23`.
 
 ## Triggering CI / Kernel Dispatch
 
-1) Post a comment starting with `@0x4007` on `https://github.com/ubiquity/.github-private/issues/22`.
+1) Post a comment starting with `@0x4007` on `https://github.com/ubiquity/.github-private/issues/23`.
 2) Monitor compute workflow: `gh run list -R 0x4007/personal-agent --workflow "Personal Agent Compute"`.
 3) Logs: `gh run view <id> -R 0x4007/personal-agent --log`.
 

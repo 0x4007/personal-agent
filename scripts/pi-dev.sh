@@ -13,7 +13,7 @@ curl_remote() {
   AGENT_OWNER_=${AGENT_OWNER:-0x4007}
   OWNER_=${OWNER:-ubiquity}
   REPO_=${REPO:-.github-private}
-  ISSUE_=${ISSUE:-22}
+  ISSUE_=${ISSUE:-23}
   SENDER_=${SENDER:-$OWNER_}
   BODY_=${BODY:-"@$AGENT_OWNER_ remote test"}
   ACCESS_MODE_=${ACCESS_MODE:-read-only}
