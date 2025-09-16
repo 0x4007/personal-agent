@@ -14,11 +14,12 @@ Rationale: We commit the compiled artifact to ensure zero network waits and sub�
 
 ## Local Development and Bundling
 
-- Local development uses Bun to run TypeScript directly (no local bundling).
+- NEVER build/bundle in development. Local development MUST use Bun to run TS directly.
   - `npm run dev:local` → `bun scripts/local-run.ts`
   - `npm run dev:pi` → `REAL_PI=1 bun scripts/local-run.ts`
-- Bundling policy: only CI produces `dist/index.js` and `dist/index.js.map` via `tsup`.
-  - Auto-bundle workflow (`.github/workflows/bundle-dist.yml`) runs on push and commits `dist/` if changed.
+  - Do not run `npm run bundle`, `tsup`, `tsc`, or any build locally.
+- Bundling happens automatically in CI only.
+  - Auto-bundle workflow (`.github/workflows/bundle-dist.yml`) runs on every push and commits `dist/index.js` and `dist/index.js.map` if changed.
 
 ## Entry Points
 
