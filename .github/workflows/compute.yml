@@ -39,32 +39,17 @@ jobs:
       USER_PAT: ${{ secrets.USER_PAT }}
       PI_URL: ${{ secrets.PI_URL }}
       PI_TIMEOUT_MS: 900000
-      PI_POST: "false"
-      # Debug toggles to capture full inputs and prompt/body in logs
-      DEBUG_EVENT: "1"
-      DEBUG_EVENT_RAW: "1"
-      LOG_PROMPT: "1"
-      LOG_PI_BODY: "1"
-      LOG_PAYLOAD: "1"
-      PROMPT_INCLUDE_EVENT: "1"
-      PROMPT_STRIP_URLS: "1"
-      WRITE_PROMPT_FILE: "1"
-      WRITE_EVENT_FILE: "1"
       NODE_ENV: ${{ github.event.inputs.testMode == 'true' && 'local' || 'production' }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: "npm"
 
       - name: Execute plugin
         run: node dist/index.js
         id: personal-agent
-
-      - name: Upload prompt artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: runtime-logs-${{ github.run_id }}
-          path: |
-            runtime-logs/**
-          if-no-files-found: ignore
