@@ -1,3 +1,0 @@
-plugins:
-  - uses:
-      - plugin: ubiquity-os-marketplace/personal-agent-bridge
