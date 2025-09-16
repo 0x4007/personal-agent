@@ -35,7 +35,9 @@ async function codexAgent(context) {
     return;
   }
   const piBaseUrl = process.env.PI_URL || env.PI_URL || "http://pi.local:3000";
-  const prompt = [
+  const timeoutMs = Number(process.env.PI_TIMEOUT_MS || env.PI_TIMEOUT_MS || 3e4);
+  const postToGh = process.env.PI_POST ? process.env.PI_POST === "true" : true;
+  const richPrompt = [
     `[mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}]`,
     `repo:${owner}/${repo}`,
     `${isPR ? "pr" : "issue"}:${issueNumber}`,
@@ -45,17 +47,21 @@ User request: ${command}`,
     `
 Instructions: Provide a helpful, concise answer. Consider repo code and ${isPR ? "PR diffs and discussion" : "issue discussion"}. Output plain text suitable for a GitHub comment.`
   ].join(" ");
+  const minimalPrompt = `User request: ${command}`;
+  const minimal = process.env.PI_MINIMAL === "1";
+  const prompt = minimal ? minimalPrompt : richPrompt;
   try {
+    const body2 = minimal ? { prompt, timeout_ms: timeoutMs, post: postToGh } : {
+      prompt,
+      timeout_ms: timeoutMs,
+      repo: `${owner}/${repo}`,
+      ...isPR ? { pr: issueNumber } : { issue: issueNumber },
+      post: postToGh
+    };
     const resp = await fetch(`${piBaseUrl}/api/codex`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        prompt,
-        timeout_ms: 3e4,
-        repo: `${owner}/${repo}`,
-        ...isPR ? { pr: issueNumber } : { issue: issueNumber },
-        post: true
-      })
+      body: JSON.stringify(body2)
     });
     if (!resp.ok) {
       const txt = await safeText(resp);
