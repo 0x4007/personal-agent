@@ -63,6 +63,13 @@ Notes:
     - `npm run pi-agent:pull` → fetch/reset to `origin/<branch>` if it exists; otherwise stays/creates the local branch.
     - `npm run pi-agent:restart` → best‑effort restart of `pi-agent-deno.service`.
 
+- `scripts/push-pi-agent.sh` → Push local pi-agent then trigger Pi pull (simulated post-push).
+  - Requires: `PI_AGENT_LOCAL_DIR` env to point to your local pi-agent clone.
+  - Usage:
+    - `PI_AGENT_LOCAL_DIR=/path/to/pi-agent npm run pi-agent:push` (uses current branch)
+    - Override: `REMOTE=origin BRANCH=main npm run pi-agent:push`
+  - Rationale: Git has no native post-push hook client-side. This wrapper ensures the push completes first, then calls `pi-agent-git.sh pull` with the same branch.
+
 ## Pi Server Contract (for reference)
 
 - Route: `POST /api/codex` accepts JSON:

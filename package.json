@@ -21,6 +21,7 @@
     "pi-agent:setup": "scripts/pi-agent-git.sh setup",
     "pi-agent:pull": "scripts/pi-agent-git.sh pull",
     "pi-agent:restart": "scripts/pi-agent-git.sh restart",
+    "pi-agent:push": "PI_AGENT_LOCAL_DIR=$PI_AGENT_LOCAL_DIR scripts/push-pi-agent.sh",
     "pi:curl": "scripts/pi-dev.sh curl",
     "pi:probe": "scripts/pi-dev.sh probe",
     "format": "run-p format:*",

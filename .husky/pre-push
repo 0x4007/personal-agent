@@ -1,6 +1,3 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
-
 # Pre-push hook to trigger a Pi pull AFTER the push completes.
 # We can't run post-push (Git lacks it), so we spawn a background watcher
 # that waits until the new commit appears on the remote, then calls the
@@ -45,4 +42,3 @@ SHA=$(git -C "$PI_AGENT_LOCAL_DIR" rev-parse "$BRANCH" 2>/dev/null)
 ) >/dev/null 2>&1 &
 
 exit 0
-
