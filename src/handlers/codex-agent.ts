@@ -57,7 +57,9 @@ export async function codexAgent(context: Context): Promise<void> {
   const minimal = process.env.PI_MINIMAL === "1";
   // Optionally append the entire raw GitHub event payload to the prompt for full context
   const includeEventJson = process.env.PROMPT_INCLUDE_EVENT === "1" || process.env.INCLUDE_GH_EVENT === "1";
-  const eventJson = includeEventJson ? safeStringify(payload) : "";
+  const stripUrls = (process.env.PROMPT_STRIP_URLS ?? "1") === "1";
+  const eventForPrompt = includeEventJson ? (stripUrls ? stripUrlFields(payload) : payload) : undefined;
+  const eventJson = includeEventJson ? safeStringify(eventForPrompt) : "";
   const basePrompt = minimal ? minimalPrompt : richPrompt;
   const prompt = includeEventJson
     ? `${basePrompt}\n\nFull GitHub event JSON (verbatim):\n\n\n${wrapJson(eventJson)}`
@@ -69,7 +71,9 @@ export async function codexAgent(context: Context): Promise<void> {
       logger.info("[codexAgent] GH payload (raw)", { payload });
     }
     if (process.env.LOG_PROMPT === "1") {
-      logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt });
+      const rawLen = includeEventJson ? safeStringify(payload).length : 0;
+      const sanLen = includeEventJson ? eventJson.length : 0;
+      logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt, eventRawLen: rawLen, eventSanitizedLen: sanLen });
     }
     const body = minimal
       ? { prompt, timeout_ms: timeoutMs, post: postToGh }
@@ -88,7 +92,7 @@ export async function codexAgent(context: Context): Promise<void> {
 
     if (process.env.WRITE_PROMPT_FILE === "1") {
       try {
-        writeRuntimeLogs({ prompt, body, payload });
+        writeRuntimeLogs({ prompt, body, payload, sanitized: eventForPrompt });
       } catch (e) {
         // non-fatal: keep going even if file logging fails
       }
@@ -207,7 +211,7 @@ async function postGithubComment(
   logger.info("[codexAgent] GitHub comment posted");
 }
 
-function writeRuntimeLogs(params: { prompt: string; body: unknown; payload: unknown }) {
+function writeRuntimeLogs(params: { prompt: string; body: unknown; payload: unknown; sanitized?: unknown }) {
   const dir = path.resolve(process.cwd(), "runtime-logs");
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -216,6 +220,7 @@ function writeRuntimeLogs(params: { prompt: string; body: unknown; payload: unkn
   const promptPath = path.join(dir, `prompt-${runId}.txt`);
   const bodyPath = path.join(dir, `pi-request-${runId}.json`);
   const payloadPath = path.join(dir, `event-${runId}.json`);
+  const payloadSanitizedPath = path.join(dir, `event-sanitized-${runId}.json`);
 
   fs.writeFileSync(promptPath, params.prompt, "utf8");
   fs.writeFileSync(bodyPath, JSON.stringify(params.body, null, 2), "utf8");
@@ -223,8 +228,27 @@ function writeRuntimeLogs(params: { prompt: string; body: unknown; payload: unkn
   if (process.env.WRITE_EVENT_FILE === "1") {
     try {
       fs.writeFileSync(payloadPath, JSON.stringify(params.payload, null, 2), "utf8");
+      if (params.sanitized !== undefined) {
+        fs.writeFileSync(payloadSanitizedPath, JSON.stringify(params.sanitized, null, 2), "utf8");
+      }
     } catch {
       // ignore
     }
   }
+}
+
+function stripUrlFields(value: unknown): unknown {
+  const urlKey = /(^|_)url$/i; // matches 'url' and '*_url'
+  if (Array.isArray(value)) {
+    return value.map(stripUrlFields);
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (urlKey.test(k)) continue;
+      out[k] = stripUrlFields(v);
+    }
+    return out;
+  }
+  return value;
 }

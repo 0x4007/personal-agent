@@ -62,7 +62,9 @@ Instructions: Provide a helpful, concise answer. Consider repo code and ${isPR ?
   const minimalPrompt = command;
   const minimal = process.env.PI_MINIMAL === "1";
   const includeEventJson = process.env.PROMPT_INCLUDE_EVENT === "1" || process.env.INCLUDE_GH_EVENT === "1";
-  const eventJson = includeEventJson ? safeStringify(payload) : "";
+  const stripUrls = (process.env.PROMPT_STRIP_URLS ?? "1") === "1";
+  const eventForPrompt = includeEventJson ? stripUrls ? stripUrlFields(payload) : payload : void 0;
+  const eventJson = includeEventJson ? safeStringify(eventForPrompt) : "";
   const basePrompt = minimal ? minimalPrompt : richPrompt;
   const prompt = includeEventJson ? `${basePrompt}
 
@@ -75,7 +77,9 @@ ${wrapJson(eventJson)}` : basePrompt;
       logger.info("[codexAgent] GH payload (raw)", { payload });
     }
     if (process.env.LOG_PROMPT === "1") {
-      logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt });
+      const rawLen = includeEventJson ? safeStringify(payload).length : 0;
+      const sanLen = includeEventJson ? eventJson.length : 0;
+      logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt, eventRawLen: rawLen, eventSanitizedLen: sanLen });
     }
     const body2 = minimal ? { prompt, timeout_ms: timeoutMs, post: postToGh } : {
       prompt,
@@ -91,7 +95,7 @@ ${wrapJson(eventJson)}` : basePrompt;
     }
     if (process.env.WRITE_PROMPT_FILE === "1") {
       try {
-        writeRuntimeLogs({ prompt, body: body2, payload });
+        writeRuntimeLogs({ prompt, body: body2, payload, sanitized: eventForPrompt });
       } catch (e) {
       }
     }
@@ -194,14 +198,33 @@ function writeRuntimeLogs(params) {
   const promptPath = path2.join(dir, `prompt-${runId}.txt`);
   const bodyPath = path2.join(dir, `pi-request-${runId}.json`);
   const payloadPath = path2.join(dir, `event-${runId}.json`);
+  const payloadSanitizedPath = path2.join(dir, `event-sanitized-${runId}.json`);
   fs.writeFileSync(promptPath, params.prompt, "utf8");
   fs.writeFileSync(bodyPath, JSON.stringify(params.body, null, 2), "utf8");
   if (process.env.WRITE_EVENT_FILE === "1") {
     try {
       fs.writeFileSync(payloadPath, JSON.stringify(params.payload, null, 2), "utf8");
+      if (params.sanitized !== void 0) {
+        fs.writeFileSync(payloadSanitizedPath, JSON.stringify(params.sanitized, null, 2), "utf8");
+      }
     } catch {
     }
   }
+}
+function stripUrlFields(value) {
+  const urlKey = /(^|_)url$/i;
+  if (Array.isArray(value)) {
+    return value.map(stripUrlFields);
+  }
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (urlKey.test(k)) continue;
+      out[k] = stripUrlFields(v);
+    }
+    return out;
+  }
+  return value;
 }
 var init_codex_agent = __esm({
   "src/handlers/codex-agent.ts"() {

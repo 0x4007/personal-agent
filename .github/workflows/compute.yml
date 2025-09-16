@@ -47,6 +47,7 @@ jobs:
       LOG_PI_BODY: "1"
       LOG_PAYLOAD: "1"
       PROMPT_INCLUDE_EVENT: "1"
+      PROMPT_STRIP_URLS: "1"
       WRITE_PROMPT_FILE: "1"
       WRITE_EVENT_FILE: "1"
       NODE_ENV: ${{ github.event.inputs.testMode == 'true' && 'local' || 'production' }}
