@@ -23,7 +23,11 @@ PI_HOST="${PI_HOST:-pi.local}"
 PI_DIR="${PI_DIR:-/home/pi/repos/pi-agent}"
 SSH_OPTS=${SSH_OPTS:-"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"}
 
-# Default to main for pi-agent; override with BRANCH if desired
+# Determine branch: prefer explicit BRANCH, then local pi-agent repo branch, else main
+BRANCH="${BRANCH:-}"
+if [[ -z "$BRANCH" && -n "${PI_AGENT_LOCAL_DIR:-}" && -d "${PI_AGENT_LOCAL_DIR}/.git" ]]; then
+  BRANCH=$(git -C "$PI_AGENT_LOCAL_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+fi
 BRANCH="${BRANCH:-main}"
 GIT_URL="${GIT_URL:-https://github.com/0x4007/pi-agent.git}"
 
@@ -44,16 +48,26 @@ case "$MODE" in
       fi; \
       cd '$PI_DIR'; \
       git fetch --all --prune; \
-      git checkout '$BRANCH' || git checkout -b '$BRANCH'; \
-      git reset --hard 'origin/'"$BRANCH"; \
+      if git ls-remote --heads origin '$BRANCH' | grep -q .; then \
+        git checkout '$BRANCH' || git checkout -b '$BRANCH'; \
+        git reset --hard 'origin/'"$BRANCH"; \
+      else \
+        echo '[remote] origin/'"$BRANCH"' not found; creating/staying on local branch'; \
+        git checkout '$BRANCH' || git checkout -b '$BRANCH'; \
+      fi; \
       git rev-parse --short HEAD"
     ;;
   pull)
     echo "[pi-agent-git] Pulling latest at $PI_USER@$PI_HOST:$PI_DIR (branch=$BRANCH)" >&2
     remote_run "set -e; cd '$PI_DIR' 2>/dev/null || { echo '[remote] repo missing; run setup' >&2; exit 2; }; \
       git fetch --all --prune; \
-      git checkout '$BRANCH' || git checkout -b '$BRANCH'; \
-      git reset --hard 'origin/'"$BRANCH"; \
+      if git ls-remote --heads origin '$BRANCH' | grep -q .; then \
+        git checkout '$BRANCH' || git checkout -b '$BRANCH'; \
+        git reset --hard 'origin/'"$BRANCH"; \
+      else \
+        echo '[remote] origin/'"$BRANCH"' not found; creating/staying on local branch'; \
+        git checkout '$BRANCH' || git checkout -b '$BRANCH'; \
+      fi; \
       git rev-parse --short HEAD"
     ;;
   restart)
@@ -71,4 +85,3 @@ case "$MODE" in
     exit 2
     ;;
 esac
-
