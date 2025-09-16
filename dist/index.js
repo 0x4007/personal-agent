@@ -54,6 +54,9 @@ async function codexAgent(context) {
     `repo:${owner}/${repo}`,
     `${isPR ? "pr" : "issue"}:${issueNumber}`,
     `actor:${sender}`,
+    `Environment: Linux shell on Raspberry Pi with git and the GitHub CLI (gh) installed. The gh CLI is already authenticated as @${agentOwner} with access to private repos.`,
+    `Rules for GitHub access: use gh for all GitHub reads (issues, PRs, files, comments, diffs). Prefer structured JSON, e.g. gh issue view ${issueNumber} --json title,body,comments or gh pr view --json files,commits. If raw REST is needed, use gh api with -q for JMESPath. Do not request credentials or tokens.`,
+    `Posting policy: do NOT post comments yourself; output only the final comment text. The runner will post your final answer.`,
     `
 User request: ${command}`,
     `

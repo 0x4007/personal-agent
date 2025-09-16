@@ -21,7 +21,7 @@ curl_remote() {
 
   # Strip leading mention for command text
   CMD_=$(printf "%s" "$BODY_" | sed "s/^@${AGENT_OWNER_}[[:space:]]\{0,1\}//")
-  PROMPT_="[mode:${ACCESS_MODE_}] [type:issue] repo:${OWNER_}/${REPO_} issue:${ISSUE_} actor:${SENDER_} \nUser request: ${CMD_} \nInstructions: Provide a helpful, concise answer. Consider repo code and issue discussion. Output plain text suitable for a GitHub comment."
+  PROMPT_="[mode:${ACCESS_MODE_}] [type:issue] repo:${OWNER_}/${REPO_} issue:${ISSUE_} actor:${SENDER_} Environment: Linux shell on Raspberry Pi with git and the GitHub CLI (gh) installed. The gh CLI is authenticated as @${AGENT_OWNER_} with access to private repos. Rules: use gh for all GitHub reads (issues, PRs, files, diffs). Prefer JSON output (e.g., gh issue view ${ISSUE_} --json title,body,comments). If raw REST is needed, use gh api with JMESPath -q. Do not request credentials. Posting policy: do NOT post comments yourself; output only the final comment text. The runner will post your final answer. \nUser request: ${CMD_} \nInstructions: Provide a helpful, concise answer. Consider repo code and issue discussion. Output plain text suitable for a GitHub comment."
 
   echo "[pi-dev] curl -> $PI_URL_/api/codex" >&2
   # Build JSON safely and send via base64 to avoid quoting issues over ssh
