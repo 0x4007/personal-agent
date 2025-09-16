@@ -1,9 +1,11 @@
 import type { Context } from "./types";
 import { isIssueCommentEvent } from "./types/typeguards";
+import { createActionsPlugin } from "@ubiquity-os/plugin-sdk";
+import { customOctokit } from "@ubiquity-os/plugin-sdk/octokit";
+import { LOG_LEVEL, type LogLevel } from "@ubiquity-os/ubiquity-os-logger";
+import { Env, envSchema, PluginSettings, pluginSettingsSchema, SupportedEvents } from "./types";
 
-type CodexAgent = typeof import("./handlers/codex-agent") extends { codexAgent: infer Fn }
-  ? Fn
-  : never;
+type CodexAgent = typeof import("./handlers/codex-agent") extends { codexAgent: infer Fn } ? Fn : never;
 
 let cachedCodexAgent: Promise<CodexAgent> | undefined;
 
@@ -44,3 +46,20 @@ export async function runPlugin(context: Context) {
 
   logger.error(`Unsupported event: ${eventName}`);
 }
+
+// Execute as a GitHub Actions plugin when run directly.
+// This preserves the single entry point at dist/index.js.
+export default createActionsPlugin<PluginSettings, Env, null, SupportedEvents>(
+  (context) => {
+    context.octokit = new customOctokit({ auth: context.env.USER_PAT });
+    return runPlugin(context as unknown as Context);
+  },
+  {
+    logLevel: (process.env.LOG_LEVEL as LogLevel) || LOG_LEVEL.INFO,
+    settingsSchema: pluginSettingsSchema,
+    envSchema: envSchema,
+    ...(process.env.KERNEL_PUBLIC_KEY && { kernelPublicKey: process.env.KERNEL_PUBLIC_KEY }),
+    postCommentOnError: true,
+    bypassSignatureVerification: process.env.NODE_ENV === "local",
+  }
+);

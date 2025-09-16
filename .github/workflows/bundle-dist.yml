@@ -32,7 +32,6 @@ jobs:
       - name: Build dist bundles
         run: |
           npm run bundle
-          npm run bundle:local
 
       - name: Commit dist if changed
         run: |
@@ -45,4 +44,3 @@ jobs:
           else
             echo "No dist changes to commit."
           fi
-

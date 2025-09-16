@@ -50,5 +50,5 @@ jobs:
           node-version: "22"
           cache: "npm"
       - name: Execute plugin
-        run: node dist/action.js
+        run: node dist/index.js
         id: personal-agent

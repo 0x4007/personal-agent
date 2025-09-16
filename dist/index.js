@@ -25733,7 +25733,7 @@ __export(codex_agent_exports, {
   codexAgent: () => codexAgent
 });
 async function codexAgent(context2) {
-  const { logger: logger2, payload, env: env2 } = context2;
+  const { logger, payload, env: env2 } = context2;
   const sender = payload.comment.user?.login;
   const repo = payload.repository.name;
   const issueNumber = payload.issue.number;
@@ -25743,14 +25743,14 @@ async function codexAgent(context2) {
   const agentOwner = env2.AGENT_OWNER;
   const isReadOnly = (process.env.ACCESS_MODE || "read-only") === "read-only";
   const accessLevel = isReadOnly ? "read-only" : "full";
-  logger2.info(`Executing codexAgent`, { sender, repo, issueNumber, owner, agentOwner, accessLevel });
+  logger.info(`Executing codexAgent`, { sender, repo, issueNumber, owner, agentOwner, accessLevel });
   if (!body.trim().startsWith(`@${agentOwner}`)) {
-    logger2.info(`Comment does not start with @${agentOwner}`, { body });
+    logger.info(`Comment does not start with @${agentOwner}`, { body });
     return;
   }
   const command = body.trim().substring(`@${agentOwner}`.length).trim();
   if (!command) {
-    await context2.commentHandler.postComment(context2, logger2.error("No command provided after username mention"));
+    await context2.commentHandler.postComment(context2, logger.error("No command provided after username mention"));
     return;
   }
   const piBaseUrl = process.env.PI_URL || env2.PI_URL || "http://pi.local:3000";
@@ -25788,9 +25788,9 @@ Instructions: Provide a helpful, concise answer. Consider repo code and ${isPR ?
     }
     const data = await resp.json();
     if (!data.ok) throw new Error(`Pi /api/codex failed (code ${data.code}): ${data.error || "unknown error"}`);
-    logger2.ok(`Pi handled Codex ${data.posted ? "and posted comment" : "without posting"}`);
+    logger.ok(`Pi handled Codex ${data.posted ? "and posted comment" : "without posting"}`);
   } catch (error) {
-    logger2.error(`Pi Codex error: ${String(error)}`);
+    logger.error(`Pi Codex error: ${String(error)}`);
   }
 }
 async function safeText(resp) {
@@ -37266,12 +37266,12 @@ function isModuleNotFound(error) {
   return "code" in error && error.code === "ERR_MODULE_NOT_FOUND";
 }
 async function runPlugin(context2) {
-  const { logger: logger2, eventName } = context2;
+  const { logger, eventName } = context2;
   if (isIssueCommentEvent(context2)) {
     const codexAgent2 = await loadCodexAgent();
     return await codexAgent2(context2);
   }
-  logger2.error(`Unsupported event: ${eventName}`);
+  logger.error(`Unsupported event: ${eventName}`);
 }
 var src_default = createActionsPlugin(
   (context2) => {
@@ -37287,79 +37287,10 @@ var src_default = createActionsPlugin(
     bypassSignatureVerification: process.env.NODE_ENV === "local"
   }
 );
-
-// scripts/local-run.ts
-var logger = {
-  info: (...args) => console.log("[info]", ...args),
-  ok: (msg, meta) => {
-    console.log("[ok]", msg, meta ?? "");
-    return {
-      logMessage: { diff: String(msg), type: "info" },
-      metadata: { message: String(msg), ...meta }
-    };
-  },
-  error: (msg, meta) => {
-    console.error("[error]", msg, meta ?? "");
-    return {
-      logMessage: { diff: String(msg), type: "fatal" },
-      metadata: { message: String(msg), ...meta }
-    };
-  }
+export {
+  src_default as default,
+  runPlugin
 };
-var commentHandler = {
-  postComment: async (_ctx, message) => {
-    console.log("[comment]", typeof message === "string" ? message : message?.logMessage?.diff || message);
-    return null;
-  }
-};
-var originalFetch = globalThis.fetch;
-var FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 15e3);
-if (!process.env.REAL_PI) {
-  globalThis.fetch = (async (input, init) => {
-    console.log("[stub fetch]", input, init?.method || "GET");
-    const body = JSON.stringify({ ok: true, code: 200, posted: false });
-    return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
-  });
-} else if (originalFetch) {
-  globalThis.fetch = (async (input, init) => {
-    console.log("[fetch]", input, init?.method || "GET");
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(new Error("timeout")), FETCH_TIMEOUT_MS);
-    try {
-      const res = await originalFetch(input, { ...init || {}, signal: ac.signal });
-      console.log("[fetch status]", res.status);
-      return res;
-    } finally {
-      clearTimeout(timer);
-    }
-  });
-}
-var AGENT = process.env.AGENT_OWNER || "0x4007";
-var OWNER = process.env.OWNER || "0x4007";
-var REPO = process.env.REPO || "personal-agent";
-var ISSUE = Number(process.env.ISSUE || 1);
-var BODY = process.env.BODY || `@${AGENT} test local`;
-async function main() {
-  const context2 = {
-    eventName: "issue_comment.created",
-    payload: {
-      comment: { user: { login: OWNER }, body: BODY, html_url: "http://local/test" },
-      repository: { name: REPO, owner: { login: OWNER } },
-      issue: { number: ISSUE }
-    },
-    env: {
-      AGENT_OWNER: AGENT,
-      PI_URL: process.env.PI_URL || "http://pi.local:3000"
-    },
-    logger,
-    commentHandler
-  };
-  await runPlugin(context2);
-}
-main().catch((e) => {
-  console.error("[local-run error]", e);
-  process.exit(1);
-});
 /*! Bundled license information:
 
 undici/lib/fetch/body.js:
@@ -37368,4 +37299,4 @@ undici/lib/fetch/body.js:
 undici/lib/websocket/frame.js:
   (*! ws. MIT License. Einar Otto Stangvik <einaros@gmail.com> *)
 */
-//# sourceMappingURL=local-run.js.map
+//# sourceMappingURL=index.js.map
