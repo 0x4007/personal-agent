@@ -47,7 +47,7 @@ User request: ${command}`,
     `
 Instructions: Provide a helpful, concise answer. Consider repo code and ${isPR ? "PR diffs and discussion" : "issue discussion"}. Output plain text suitable for a GitHub comment.`
   ].join(" ");
-  const minimalPrompt = `User request: ${command}`;
+  const minimalPrompt = command;
   const minimal = process.env.PI_MINIMAL === "1";
   const prompt = minimal ? minimalPrompt : richPrompt;
   try {

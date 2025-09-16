@@ -46,8 +46,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '22'
-
+          node-version: "22"
+          cache: "npm"
       - name: Execute plugin
         run: node dist/action.js
         id: personal-agent

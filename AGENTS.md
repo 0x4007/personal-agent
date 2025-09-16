@@ -21,10 +21,40 @@ Rationale: We commit the compiled artifact to ensure zero network waits and sub�
 ## Entry Points
 
 - GitHub Actions entry: `dist/action.js` (ESM).
-- Cloudflare/Worker or server entry points (if any) should also be bundled before commit.
+- Local harness for post‑decode testing: `dist/local-run.js` (see tooling below).
+
+## Tooling (added for debugging and Pi integration)
+
+- `scripts/local-run.ts` → bundles to `dist/local-run.js`.
+  - Skips Actions input decoding/compression step and calls `runPlugin` directly.
+  - Env: `REAL_PI` toggles real fetch to Pi; `FETCH_TIMEOUT_MS` controls client timeout; `PI_URL` defaults to `http://pi.local:3000`.
+
+- `scripts/pi-dev.sh` → rsync + remote execution on the Raspberry Pi.
+  - `npm run pi:all` → bundle local harness, sync to Pi, run on Pi (sources nvm / PATH for lazy node).
+  - `npm run pi:sync`, `npm run pi:run` → granular control.
+  - `npm run pi:probe` → probes `/api/codex` with multiple payloads.
+  - `npm run pi:curl` → crafts JSON safely and POSTs via ssh (base64 to avoid quoting issues).
+
+## Pi Server Contract (for reference)
+
+- Route: `POST /api/codex` accepts JSON:
+  - `prompt` (runs `codex exec <prompt>`) or `comment`/`raw_comment` (bypass codex).
+  - Optional `repo`, `issue` or `pr`, `post` (server uses `gh` to comment), `timeout_ms`, `mention`.
+- Response: `{ ok, code, output, error, posted, gh }` (note `code=143` from codex means timeout/termination).
+
+## Plugin runtime knobs
+
+- `PI_URL` → base URL to the Pi server.
+- `PI_TIMEOUT_MS` → forwarded as `timeout_ms` in the Pi payload.
+- `PI_POST` → boolean; server posting on/off.
+- `PI_MINIMAL=1` → switch to a compact prompt body (reduces Codex timeouts).
+
+## Prompt Guidance for “Hello world” verification
+
+- Preferred: let the server post. Send a prompt that yields exactly `Hello world` and include `repo` + `issue` → the server posts via `gh`.
+- If you must force Codex to auth+post itself, craft a prompt that instructs `gh auth login` and `gh issue comment` and set `post: false`. You will need to provide `GH_TOKEN` to the Codex process; this is not the default path.
 
 ## Notes
 
 - `actions/setup-node` is permitted to provision Node, but no package installs or builds are allowed.
-- If the workflow requires input normalization (e.g., payload compression), implement it in code, not via extra CI steps that slow boot time.
-
+- If the workflow requires input normalization (e.g., payload compression), implement it in code, not in CI steps.
