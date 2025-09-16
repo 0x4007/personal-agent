@@ -8,6 +8,8 @@ export default defineConfig((options) => ({
   splitting: false,
   clean: !options.watch,
   dts: false,
+  shims: true,
+  cjsInterop: true,
   // Bundle all dependencies so compute.yml never installs packages
   // Use a wildcard pattern list to avoid tsup treating booleans unexpectedly in plugins
   noExternal: [/^.*/],
