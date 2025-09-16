@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Auto-sync pi-agent on the Raspberry Pi after each commit.
+# Non-blocking, best-effort. Skips in CI and when disabled.
+
+[ -n "$CI" ] && exit 0
+[ "$DISABLE_PI_AGENT_SYNC" = "1" ] && exit 0
+
+PI_USER="${PI_USER:-pi}"
+PI_HOST="${PI_HOST:-pi.local}"
+
+# Quick connectivity probe; skip if unreachable
+ssh -o BatchMode=yes -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$PI_USER@$PI_HOST" 'exit 0' >/dev/null 2>&1 || exit 0
+
+# Inherit optional BRANCH and PI_AGENT_LOCAL_DIR for branch auto-detection inside the script
+nohup env PI_USER="$PI_USER" PI_HOST="$PI_HOST" \
+  scripts/pi-agent-git.sh pull >/dev/null 2>&1 &
+
+exit 0
+
