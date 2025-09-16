@@ -1,5 +1,5 @@
 import "./sourcemap-register.cjs";
-import { createRequire as __WEBPACK_EXTERNAL_createRequire } from "module";
+import { createRequire as __WEBPACK_EXTERNAL_createRequire } from "node:module";
 var __webpack_modules__ = {
   4914: function (e, t, r) {
     var s =
