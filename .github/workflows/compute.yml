@@ -54,6 +54,16 @@ jobs:
       - name: Build plugin (tsup)
         run: npm run bundle
 
+      - name: Normalize event payload
+        run: >-
+          node -e "const fs=require('fs');const z=require('zlib');
+          const p=process.env.GITHUB_EVENT_PATH; const obj=JSON.parse(fs.readFileSync(p,'utf8'));
+          const s=obj.inputs && obj.inputs.eventPayload;
+          if(typeof s==='string'){
+            try{ z.brotliDecompressSync(Buffer.from(s,'base64')); }
+            catch{ obj.inputs.eventPayload = z.brotliCompressSync(Buffer.from(s,'utf8')).toString('base64'); fs.writeFileSync(p, JSON.stringify(obj)); }
+          }"
+
       - name: Execute plugin
         run: node dist/action.js
         id: personal-agent
