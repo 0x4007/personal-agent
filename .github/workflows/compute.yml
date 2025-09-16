@@ -56,8 +56,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Run personal agent
-        uses: ./dist/index.js
+      - name: Execute plugin
+        run: node dist/index.js
+        id: personal-agent
 
       - name: Upload prompt artifacts
         if: always()
