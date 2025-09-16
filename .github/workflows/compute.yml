@@ -53,16 +53,11 @@ jobs:
       NODE_ENV: ${{ github.event.inputs.testMode == 'true' && 'local' || 'production' }}
 
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-          cache: "npm"
-      - name: Execute plugin
-        run: node dist/index.js
-        id: personal-agent
+      - name: Run personal agent
+        uses: ./dist/index.js
 
       - name: Upload prompt artifacts
         if: always()
