@@ -16,5 +16,4 @@ cypress/screenshots
 script.ts
 .wrangler
 test-dashboard.md
-# Local-only build outputs
-dev-dist/
+# (no dev-dist; local development uses Bun to run TS directly)

@@ -1,82 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Simple helper to push the local runner to Raspberry Pi and execute it there.
+# Simple helpers to probe/curl the Raspberry Pi Codex API.
 
-MODE="${1:-all}"
+MODE="${1:-probe}"
 PI_USER="${PI_USER:-pi}"
 PI_HOST="${PI_HOST:-pi.local}"
 PI_DEST="${PI_DEST:-/home/pi/tmp/personal-agent-local-run}"
 SSH_OPTS=${SSH_OPTS:-"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"}
-
-ensure_bundle() {
-  if [[ ! -f dev-dist/local-run.js ]]; then
-    echo "[pi-dev] dev-dist/local-run.js missing; bundling..." >&2
-    npm run --silent bundle:local
-  fi
-}
-
-sync_to_pi() {
-  echo "[pi-dev] Syncing dev-dist/local-run.js to $PI_USER@$PI_HOST:$PI_DEST/" >&2
-  ssh $SSH_OPTS "$PI_USER@$PI_HOST" "mkdir -p '$PI_DEST'"
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -avz -e "ssh $SSH_OPTS" dev-dist/local-run.js dev-dist/local-run.js.map "$PI_USER@$PI_HOST:$PI_DEST/"
-  else
-    scp $SSH_OPTS dev-dist/local-run.js dev-dist/local-run.js.map "$PI_USER@$PI_HOST:$PI_DEST/"
-  fi
-}
-
-run_on_pi() {
-  # Defaults can be overridden by env
-  AGENT_OWNER_=${AGENT_OWNER:-0x4007}
-  OWNER_=${OWNER:-ubiquity}
-  REPO_=${REPO:-.github-private}
-  ISSUE_=${ISSUE:-22}
-  BODY_=${BODY:-'@0x4007 remote test'}
-  PI_URL_=${PI_URL:-http://127.0.0.1:3000}
-  FETCH_TIMEOUT_MS_=${FETCH_TIMEOUT_MS:-15000}
-  PI_MINIMAL_=${PI_MINIMAL:-}
-
-  echo "[pi-dev] Executing on $PI_USER@$PI_HOST with PI_URL=$PI_URL_" >&2
-  # Escape single quotes for safe single-quoting
-  BODY_ESC=$(printf "%s" "$BODY_" | sed "s/'/'\\''/g")
-  REMOTE_SCRIPT=$(cat <<'SH'
-set -euo pipefail
-# ensure node in PATH (nvm or system)
-if ! command -v node >/dev/null 2>&1; then
-  export NVM_DIR="$HOME/.nvm"
-  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" || true
-  [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion" || true
-fi
-if ! command -v node >/dev/null 2>&1; then
-  export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
-fi
-echo "[remote] node path: $(command -v node || echo not-found)"
-echo -n "[remote] node version: "; node -v || true
-node "$PI_DEST/local-run.js"
-SH
-)
-  # inject env exports safely
-  REMOTE_ENV=$(
-    cat <<ENV
-export REAL_PI=1
-export FETCH_TIMEOUT_MS=$FETCH_TIMEOUT_MS_
-export PI_DEST='$PI_DEST'
-export AGENT_OWNER='$AGENT_OWNER_'
-export OWNER='$OWNER_'
-export REPO='$REPO_'
-export ISSUE='$ISSUE_'
-export BODY='$BODY_ESC'
-export PI_URL='$PI_URL_'
-export NODE_ENV=local
-${PI_MINIMAL_:+export PI_MINIMAL='$PI_MINIMAL_'}
-ENV
-  )
-  FULL_SCRIPT="$REMOTE_ENV
-$REMOTE_SCRIPT"
-  B64=$(printf '%s' "$FULL_SCRIPT" | base64 | tr -d '\n')
-  ssh $SSH_OPTS "$PI_USER@$PI_HOST" "echo '$B64' | base64 -d | bash -s"
-}
 
 curl_remote() {
   AGENT_OWNER_=${AGENT_OWNER:-0x4007}
@@ -105,18 +36,6 @@ curl_remote() {
 }
 
 case "$MODE" in
-  all)
-    ensure_bundle
-    sync_to_pi
-    run_on_pi
-    ;;
-  sync)
-    ensure_bundle
-    sync_to_pi
-    ;;
-  run)
-    run_on_pi
-    ;;
   probe)
     ssh $SSH_OPTS "$PI_USER@$PI_HOST" "set -x; curl -sS http://127.0.0.1:3000/ | head -n 50; echo '---'; \
       curl -sS http://127.0.0.1:3000/api | head -n 50 || true; echo '---'; \
@@ -131,7 +50,7 @@ case "$MODE" in
     curl_remote
     ;;
   *)
-    echo "Usage: $0 [all|sync|run|curl|probe]" >&2
+    echo "Usage: $0 [curl|probe]" >&2
     exit 2
     ;;
 esac

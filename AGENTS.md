@@ -28,10 +28,14 @@ They MUST be committed and present in every commit on the GitHub repo so that
 Actions can directly invoke `node dist/index.js` without installing dependencies
 or building.
 
+Local development
+- Use Bun to run TypeScript directly; no local bundling.
+- Examples:
+  - `npm run dev:local` → `bun scripts/local-run.ts` (stubbed Pi by default)
+  - `npm run dev:pi` → `REAL_PI=1 bun scripts/local-run.ts` (talks to the Pi)
+
 Notes:
-- Do not commit any other artifacts under `dist/`.
-- Developer helpers (like the local harness) must not write to `dist/`. Use a
-  separate outDir (e.g., `dev-dist/`) for any local-only bundles.
+- Do not commit any artifacts other than `dist/index.js` and `dist/index.js.map`.
 
 ## Tooling (added for debugging and Pi integration)
 
