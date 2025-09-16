@@ -50,6 +50,16 @@ async function codexAgent(context) {
   const shouldPost = isSelf;
   const postToGh = false;
   const mentionOverride = parseMentionEnv(process.env.PI_MENTION);
+  const enablePrefetch = (process.env.PROMPT_FETCH_ISSUE ?? "1") === "1";
+  let fetchedContext = null;
+  if (enablePrefetch) {
+    try {
+      const token = selectPatToken({ isSelf });
+      fetchedContext = await fetchIssueContext({ owner, repo, issueNumber, isPR, token });
+    } catch (e) {
+      logger.info("[codexAgent] Prefetch failed (non-fatal)", { error: String(e) });
+    }
+  }
   const richPrompt = [
     `[mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}]`,
     `repo:${owner}/${repo}`,
@@ -69,13 +79,23 @@ Instructions: Provide a helpful, concise answer. Consider repo code and ${isPR ?
   const stripUrls = (process.env.PROMPT_STRIP_URLS ?? "1") === "1";
   const eventForPrompt = includeEventJson ? stripUrls ? stripUrlFields(payload) : payload : void 0;
   const eventJson = includeEventJson ? safeStringify(eventForPrompt) : "";
+  const contextJson = fetchedContext ? safeStringify(stripUrlFields(fetchedContext)) : "";
   const basePrompt = minimal ? minimalPrompt : richPrompt;
-  const prompt = includeEventJson ? `${basePrompt}
+  let prompt = basePrompt;
+  if (contextJson) {
+    prompt += `
+
+GitHub context (prefetched):
+
+${wrapJson(contextJson)}`;
+  }
+  if (includeEventJson) {
+    prompt += `
 
 Full GitHub event JSON (verbatim):
 
-
-${wrapJson(eventJson)}` : basePrompt;
+${wrapJson(eventJson)}`;
+  }
   try {
     if (process.env.LOG_PAYLOAD === "1") {
       logger.info("[codexAgent] GH payload (raw)", { payload });
@@ -83,7 +103,8 @@ ${wrapJson(eventJson)}` : basePrompt;
     if (process.env.LOG_PROMPT === "1") {
       const rawLen = includeEventJson ? safeStringify(payload).length : 0;
       const sanLen = includeEventJson ? eventJson.length : 0;
-      logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt, eventRawLen: rawLen, eventSanitizedLen: sanLen });
+      const ctxLen = contextJson.length;
+      logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt, eventRawLen: rawLen, eventSanitizedLen: sanLen, contextLen: ctxLen });
     }
     const body2 = minimal ? { prompt, timeout_ms: timeoutMs, post: false, mention: mentionOverride } : {
       prompt,
@@ -264,6 +285,44 @@ function selectPatToken(opts) {
     return process.env.USER_PAT_FULL || process.env.PAT_FULL || process.env.USER_PAT || process.env.PLUGIN_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
   }
   return process.env.USER_PAT_READ || process.env.PAT_READ || process.env.USER_PAT || process.env.PLUGIN_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
+}
+async function fetchIssueContext(params) {
+  const { owner, repo, issueNumber, isPR, token } = params;
+  if (!token) throw new Error("Missing token for GitHub context fetch");
+  const base = `https://api.github.com/repos/${owner}/${repo}`;
+  const headers = {
+    "authorization": `Bearer ${token}`,
+    "accept": "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28"
+  };
+  async function getJson(url) {
+    const r = await fetch(url, { headers });
+    if (!r.ok) throw new Error(`${url} -> HTTP ${r.status}`);
+    return r.json();
+  }
+  const issue = await getJson(`${base}/issues/${issueNumber}`);
+  const comments = await getJson(`${base}/issues/${issueNumber}/comments?per_page=50`);
+  let pr = null;
+  if (isPR) {
+    try {
+      pr = await getJson(`${base}/pulls/${issueNumber}`);
+    } catch {
+    }
+  }
+  const slimIssue = {
+    number: issue.number,
+    title: issue.title,
+    state: issue.state,
+    author: issue.user?.login,
+    labels: Array.isArray(issue.labels) ? issue.labels.map((l) => typeof l === "string" ? l : l?.name).filter(Boolean) : [],
+    body: issue.body,
+    created_at: issue.created_at,
+    updated_at: issue.updated_at,
+    url: issue.url
+  };
+  const slimComments = Array.isArray(comments) ? comments.map((c) => ({ author: c.user?.login, created_at: c.created_at, body: c.body, url: c.url })) : [];
+  const slimPr = pr ? { merged: !!pr.merged_at, draft: !!pr.draft, head: pr.head?.ref, base: pr.base?.ref, additions: pr.additions, deletions: pr.deletions, changed_files: pr.changed_files, url: pr.url } : null;
+  return { issue: slimIssue, comments: slimComments, pr: slimPr };
 }
 function stripUrlFields(value) {
   const redundantUrlKey = /_url$/i;

@@ -81,6 +81,21 @@ Logging toggles for production debugging:
 2) Monitor compute workflow: `gh run list -R 0x4007/personal-agent --workflow "Personal Agent Compute"`.
 3) Logs: `gh run view <id> -R 0x4007/personal-agent --log`.
 
+## Current Debug Focus (Issue #24, Kernel Dispatch)
+
+- Symptom: Comment on `ubiquity/.github-private#24` did not trigger a run at 17:19Z. No "Personal Agent Compute" run appeared — this is a Kernel dispatch issue, not a plugin failure.
+- Validation: Manually dispatched the same event payload and it worked (posted a short reply to #24 at 20:41Z). Artifacts confirm dynamic `issue: 24` in the Pi request.
+- Likely cause: Kernel gating requires the comment to start with your exact username mention at the first character (e.g., `@0x4007 ...`). Ensure the Kernel is configured to watch the repository for `issue_comment.created` events on all issues, not a single thread.
+- How to manually reproduce:
+  1) Grab the comment JSON: `gh api /repos/ubiquity/.github-private/issues/comments/<id>`
+  2) Construct `eventPayload` with `{ comment, issue: {number}, repository: {name, owner} }`.
+  3) Dispatch: `gh workflow run "Personal Agent Compute" -R 0x4007/personal-agent -f stateId=manual-... -f eventName=issue_comment.created -f eventPayload="$JSON" -f testMode=true`.
+  4) Inspect artifacts to confirm `pi-request-<run_id>.json` contains the correct `issue` number.
+
+What to check next
+- Kernel config: verify it listens for `issue_comment.created`, and that the mention is exactly at the beginning of the comment body.
+- If a run appears but no reply posts: confirm owner vs non-owner path (see "Posting & Access Control"), and check token availability.
+
 ## Practical Commands
 
 - Build dist (for CI artifact): `npm run bundle`
@@ -94,6 +109,27 @@ Logging toggles for production debugging:
 - Pi probes/curl:
   - `npm run pi:probe`
   - `npm run pi:curl` (uses `raw_comment` server-post path)
+
+## Posting & Access Control (Live)
+
+- Who is allowed to post a reply
+  - Owner (comment author equals `AGENT_OWNER`): compute posts a sanitized, short reply using `PAT_FULL` (mapped as `USER_PAT_FULL`).
+  - Others: read-only; no comment is posted. The Pi still runs with `post:false` for logs/artifacts.
+- Server posting is disabled in every request
+  - We always send `post:false` and `mention:false` to prevent server-added mentions and loops.
+- Token precedence for posting (compute only): `USER_PAT_FULL/USER_PAT_READ` → `PLUGIN_GITHUB_TOKEN` → `GITHUB_TOKEN`.
+- Loop prevention
+  - Aggressive sanitizer removes banners/"thinking"/exec lines/mentions and limits output to last 1–2 sentences (~600 chars). File: `src/handlers/codex-agent.ts`.
+
+## Prompt + Event Embedding
+
+- Optional prompt embedding of the full GitHub event JSON (off by default in compute)
+  - When enabled, we strip `*_url` while preserving `url` to reduce size.
+  - Logs record raw vs sanitized sizes.
+- Runtime artifacts (enabled):
+  - `prompt-<run_id>.txt` → full prompt, including issue number
+  - `pi-request-<run_id>.json` → exact body to Pi (shows `issue`, `post:false`, `mention:false`)
+  - `event-<run_id>.json` → decoded event (for debugging dispatch)
 
 ## Open Issues / Next Steps
 
@@ -112,6 +148,14 @@ Logging toggles for production debugging:
 - CI must never install deps or build in compute — it runs the committed dist only.
 - Local development uses Bun (TS on the fly).
 - Pi sync via Git ensures revision integrity (no ad-hoc rsync of partial files).
+
+## Pi Deploy/Sync on Maintainer LAN
+
+- Pre-push hook (Husky v10): `.husky/pre-push`
+  - Hardcoded local path: `/Users/nv/repos/pi-agent`, remote: `origin`, Pi: `pi@pi.local`.
+  - After the push completes (detected via `git ls-remote`), the hook pulls the same branch on the Pi and restarts `pi-agent-deno.service` (best-effort).
+  - Non-blocking; disable temporarily with `DISABLE_PI_AGENT_SYNC=1 git push`.
+
 
 ## Where to review the full prompt and inputs
 

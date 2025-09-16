@@ -63,6 +63,63 @@ Notes:
     - `npm run pi-agent:pull` → fetch/reset to `origin/<branch>` if it exists; otherwise stays/creates the local branch.
     - `npm run pi-agent:restart` → best‑effort restart of `pi-agent-deno.service`.
 
+- Husky pre-push (local-only): `.husky/pre-push`
+  - Hardcoded to the maintainer’s LAN setup:
+    - Local pi-agent path: `/Users/nv/repos/pi-agent`
+    - Remote: `origin`
+    - Pi host: `pi@pi.local`
+  - Behavior: after a push completes (detected via `git ls-remote` seeing the new SHA), it pulls the same branch on the Pi using `scripts/pi-agent-git.sh pull` with `BRANCH=<current>`, then restarts the `pi-agent-deno.service` (best‑effort). Non‑blocking.
+  - To disable temporarily: `DISABLE_PI_AGENT_SYNC=1 git push`.
+
+## Posting & Access Control
+
+- Invocation gate: the comment must begin with `@${AGENT_OWNER}` or it is ignored.
+- Who may post replies:
+  - Owner (comment author matches `AGENT_OWNER`, case‑insensitive): compute posts the (sanitized) reply.
+  - Others: read‑only; no posting.
+- Token selection for posting (compute only):
+  - Owner: `PAT_FULL` (exposed to code as `USER_PAT_FULL`).
+  - Others: `PAT_READ` (exposed to code as `USER_PAT_READ`).
+  - Fallbacks (last resorts): `PLUGIN_GITHUB_TOKEN`, then `GITHUB_TOKEN`.
+- Server posting is disabled in requests (we send `post:false`) to avoid any server‑side auto‑mentioning. We also send `mention:false` explicitly to signal “no mention”.
+
+## Loop Prevention & Sanitization
+
+- We aggressively sanitize the model output before posting:
+  - Strip any `@${AGENT_OWNER}` mentions anywhere to avoid re‑triggering.
+  - Remove transcript/log lines: banners, `OpenAI Codex v…`, separators, `workdir:`, `model:`, `provider:`, `approval:`, `sandbox:`, `reasoning…`, timestamps, `thinking`, `codex`, shell exec lines, “User instructions/request”, and “Planned fetch/Command I’d run”.
+  - Keep only the last assistant‑like section if present, then limit to the last two sentences; hard cap ~600 chars.
+  - File: `src/handlers/codex-agent.ts` (function `sanitizeOutput`).
+
+## Prompt Context Size
+
+- Optional event embedding: when enabled, we include the raw GitHub event JSON in the prompt for full context, but:
+  - We strip all `*_url` fields while preserving the literal `url` key to shrink size.
+  - Toggles (off by default in compute): `PROMPT_INCLUDE_EVENT=1`, `PROMPT_STRIP_URLS=1`.
+  - Logs record raw vs sanitized lengths when enabled.
+
+## Runtime Artifacts
+
+- The plugin can write runtime files to `runtime-logs/` and upload them as a workflow artifact:
+  - `prompt-<run_id>.txt` → exact prompt string used.
+  - `pi-request-<run_id>.json` → the body posted to `/api/codex` (includes `timeout_ms`, `post:false`, `mention:false`).
+  - `event-<run_id>.json` → decoded GitHub event (when `WRITE_EVENT_FILE=1`).
+  - `event-sanitized-<run_id>.json` → event with `*_url` removed (when event embedding is enabled).
+- compute.yml enables only `WRITE_PROMPT_FILE=1` and `WRITE_EVENT_FILE=1` by default to keep cold start minimal.
+
+## Defaults & Test Target
+
+- Timeout forwarded to Pi: `PI_TIMEOUT_MS=900000` (15 minutes).
+- Test issue default moved to `#23` for a cleaner thread.
+
+- `scripts/pi-agent-git.sh` → Git-based sync for the Raspberry Pi server repo (pi-agent).
+  - Defaults: repo `https://github.com/0x4007/pi-agent.git`, dir `/home/pi/repos/pi-agent`, branch `main`.
+  - Branch selection: if `BRANCH` is set, it is used. Otherwise, if `PI_AGENT_LOCAL_DIR` points to a local `pi-agent` clone, the current branch from that repo is used. If neither is provided, falls back to `main`.
+  - Commands:
+    - `npm run pi-agent:setup` → clone on Pi if missing, checkout/reset to branch.
+    - `npm run pi-agent:pull` → fetch/reset to `origin/<branch>` if it exists; otherwise stays/creates the local branch.
+    - `npm run pi-agent:restart` → best‑effort restart of `pi-agent-deno.service`.
+
 - `scripts/push-pi-agent.sh` → Optional CLI to push local pi-agent then trigger Pi pull (post-push style).
   - Defaults are fine; no env required on maintainer’s machine.
   - Rationale: Git has no native post-push hook client-side. The Husky pre-push hook below is preferred.

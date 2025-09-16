@@ -45,6 +45,18 @@ export async function codexAgent(context: Context): Promise<void> {
   const postToGh = false; // we never ask the Pi server to post; compute may post if shouldPost
   const mentionOverride = parseMentionEnv(process.env.PI_MENTION);
 
+  // Optionally prefetch GitHub context (issue/PR + comments) using the job token
+  const enablePrefetch = (process.env.PROMPT_FETCH_ISSUE ?? "1") === "1";
+  let fetchedContext: unknown = null;
+  if (enablePrefetch) {
+    try {
+      const token = selectPatToken({ isSelf });
+      fetchedContext = await fetchIssueContext({ owner, repo, issueNumber, isPR, token });
+    } catch (e) {
+      logger.info("[codexAgent] Prefetch failed (non-fatal)", { error: String(e) });
+    }
+  }
+
   // Build prompts
   const richPrompt = [
     `[mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}]`,
@@ -64,10 +76,15 @@ export async function codexAgent(context: Context): Promise<void> {
   const stripUrls = (process.env.PROMPT_STRIP_URLS ?? "1") === "1";
   const eventForPrompt = includeEventJson ? (stripUrls ? stripUrlFields(payload) : payload) : undefined;
   const eventJson = includeEventJson ? safeStringify(eventForPrompt) : "";
+  const contextJson = fetchedContext ? safeStringify(stripUrlFields(fetchedContext)) : "";
   const basePrompt = minimal ? minimalPrompt : richPrompt;
-  const prompt = includeEventJson
-    ? `${basePrompt}\n\nFull GitHub event JSON (verbatim):\n\n\n${wrapJson(eventJson)}`
-    : basePrompt;
+  let prompt = basePrompt;
+  if (contextJson) {
+    prompt += `\n\nGitHub context (prefetched):\n\n${wrapJson(contextJson)}`;
+  }
+  if (includeEventJson) {
+    prompt += `\n\nFull GitHub event JSON (verbatim):\n\n${wrapJson(eventJson)}`;
+  }
 
   try {
     // Optional runtime logging of the incoming payload, full prompt and request body (gated by env)
@@ -77,7 +94,8 @@ export async function codexAgent(context: Context): Promise<void> {
     if (process.env.LOG_PROMPT === "1") {
       const rawLen = includeEventJson ? safeStringify(payload).length : 0;
       const sanLen = includeEventJson ? eventJson.length : 0;
-      logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt, eventRawLen: rawLen, eventSanitizedLen: sanLen });
+      const ctxLen = contextJson.length;
+      logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt, eventRawLen: rawLen, eventSanitizedLen: sanLen, contextLen: ctxLen });
     }
     const body = minimal
       ? { prompt, timeout_ms: timeoutMs, post: false, mention: mentionOverride }
@@ -183,6 +201,8 @@ function sanitizeOutput(output: string, agentOwner: string): string {
     /^Planned (fetch|GitHub fetch)/i,
     /^Fetch I.?d run:/i,
     /^Command I.?d run:/i,
+    /^You can also run:/i,
+    /gh\s+issue\s+view\s+\d+/i,
     /^exec\b/i,
     /^bash -lc/i,
     /^codex$/i,
@@ -314,6 +334,52 @@ function selectPatToken(opts: { isSelf: boolean }): string {
     process.env.GITHUB_TOKEN ||
     ""
   );
+}
+
+async function fetchIssueContext(params: { owner: string; repo: string; issueNumber: number; isPR: boolean; token: string }): Promise<unknown> {
+  const { owner, repo, issueNumber, isPR, token } = params;
+  if (!token) throw new Error("Missing token for GitHub context fetch");
+  const base = `https://api.github.com/repos/${owner}/${repo}`;
+  const headers = {
+    "authorization": `Bearer ${token}`,
+    "accept": "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28",
+  } as Record<string, string>;
+
+  async function getJson(url: string): Promise<any> {
+    const r = await fetch(url, { headers });
+    if (!r.ok) throw new Error(`${url} -> HTTP ${r.status}`);
+    return r.json();
+  }
+
+  const issue = await getJson(`${base}/issues/${issueNumber}`);
+  // comments can be many; fetch first page only to keep prompt small
+  const comments = await getJson(`${base}/issues/${issueNumber}/comments?per_page=50`);
+  let pr: any = null;
+  if (isPR) {
+    try { pr = await getJson(`${base}/pulls/${issueNumber}`); } catch { /* ignore */ }
+  }
+
+  // Keep only concise fields
+  const slimIssue = {
+    number: issue.number,
+    title: issue.title,
+    state: issue.state,
+    author: issue.user?.login,
+    labels: Array.isArray(issue.labels) ? issue.labels.map((l: any) => (typeof l === "string" ? l : l?.name)).filter(Boolean) : [],
+    body: issue.body,
+    created_at: issue.created_at,
+    updated_at: issue.updated_at,
+    url: issue.url,
+  };
+  const slimComments = Array.isArray(comments)
+    ? comments.map((c: any) => ({ author: c.user?.login, created_at: c.created_at, body: c.body, url: c.url }))
+    : [];
+  const slimPr = pr
+    ? { merged: !!pr.merged_at, draft: !!pr.draft, head: pr.head?.ref, base: pr.base?.ref, additions: pr.additions, deletions: pr.deletions, changed_files: pr.changed_files, url: pr.url }
+    : null;
+
+  return { issue: slimIssue, comments: slimComments, pr: slimPr };
 }
 
 function stripUrlFields(value: unknown): unknown {
