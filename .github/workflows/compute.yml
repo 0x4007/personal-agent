@@ -48,38 +48,6 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build plugin (tsup)
-        run: npm run bundle
-
-      - name: Inspect event payload (before)
-        run: >-
-          node -e "const fs=require('fs'); const p=process.env.GITHUB_EVENT_PATH;
-          const o=JSON.parse(fs.readFileSync(p,'utf8'));
-          const s=o.inputs?.eventPayload; const sn = typeof s==='string' ? s.slice(0,32) : '';
-          const looksJson = typeof s==='string' && s.trim().startsWith('{');
-          console.log(JSON.stringify({looksJson, type: typeof s, len: typeof s==='string'? s.length: null, head: sn}));"
-
-      - name: Normalize event payload
-        run: >-
-          node -e "const fs=require('fs');const z=require('zlib');
-          const p=process.env.GITHUB_EVENT_PATH; const obj=JSON.parse(fs.readFileSync(p,'utf8'));
-          const s=obj.inputs && obj.inputs.eventPayload;
-          if(typeof s==='string'){
-            try{ z.brotliDecompressSync(Buffer.from(s,'base64')); }
-            catch{ obj.inputs.eventPayload = z.brotliCompressSync(Buffer.from(s,'utf8')).toString('base64'); fs.writeFileSync(p, JSON.stringify(obj)); }
-          }"
-
-      - name: Inspect event payload (after)
-        run: >-
-          node -e "const fs=require('fs'); const p=process.env.GITHUB_EVENT_PATH;
-          const o=JSON.parse(fs.readFileSync(p,'utf8'));
-          const s=o.inputs?.eventPayload; const sn = typeof s==='string' ? s.slice(0,32) : '';
-          const looksJson = typeof s==='string' && s.trim().startsWith('{');
-          console.log(JSON.stringify({looksJson, type: typeof s, len: typeof s==='string'? s.length: null, head: sn}));"
-
       - name: Execute plugin
         run: node dist/action.js
         id: personal-agent
