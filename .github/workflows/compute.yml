@@ -43,14 +43,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-
-      - name: Execute plugin
-        run: node dist/index.js
-        id: personal-agent
-
-      - name: Upload prompt artifacts
+      - run: node dist/index.js
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: runtime-logs-${{ github.run_id }}
           path: |
