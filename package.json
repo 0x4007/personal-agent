@@ -14,6 +14,8 @@
     "bundle": "tsup --entry.index=src/index.ts --format esm --platform node --target node22 --sourcemap --out-dir dist --clean --no-splitting",
     "dev:local": "NODE_ENV=local bun scripts/local-run.ts",
     "dev:pi": "REAL_PI=1 NODE_ENV=local AGENT_OWNER=0x4007 OWNER=ubiquity REPO=.github-private ISSUE=22 BODY='@0x4007 local to pi' bun scripts/local-run.ts",
+    "pi:setup": "scripts/pi-git.sh setup",
+    "pi:pull": "scripts/pi-git.sh pull",
     "pi:curl": "scripts/pi-dev.sh curl",
     "pi:probe": "scripts/pi-dev.sh probe",
     "format": "run-p format:*",

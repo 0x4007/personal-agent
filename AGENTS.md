@@ -7,16 +7,18 @@ This repository is optimized for instant cold‑boot CI. Follow these rules stri
 - DO NOT install dependencies in `.github/workflows/compute.yml`.
 - DO NOT build/bundle in `.github/workflows/compute.yml`.
 - The compute job must execute the committed bundle from `dist/` directly.
-- Keep the compute job minimal: checkout, set up Node, run `node dist/action.js`.
+- Keep the compute job minimal: checkout, set up Node, run `node dist/index.js`.
 - Never add steps like `npm ci`, `npm install`, `pnpm install`, `yarn install`, `npm run build`, or `npm run bundle` to the compute workflow.
 
 Rationale: We commit the compiled artifact to ensure zero network waits and sub‑second startup in CI.
 
 ## Local Development and Bundling
 
-- Use `tsup` to bundle the action entry `src/action.ts`.
-- Command: `tsup src/action.ts --format esm --target node22 --sourcemap --out-dir dist --clean --no-splitting`.
-- Commit `dist/action.js` and `dist/action.js.map` with each change that affects runtime.
+- Local development uses Bun to run TypeScript directly (no local bundling).
+  - `npm run dev:local` → `bun scripts/local-run.ts`
+  - `npm run dev:pi` → `REAL_PI=1 bun scripts/local-run.ts`
+- Bundling policy: only CI produces `dist/index.js` and `dist/index.js.map` via `tsup`.
+  - Auto-bundle workflow (`.github/workflows/bundle-dist.yml`) runs on push and commits `dist/` if changed.
 
 ## Entry Points
 
@@ -37,16 +39,18 @@ Local development
 Notes:
 - Do not commit any artifacts other than `dist/index.js` and `dist/index.js.map`.
 
-## Tooling (added for debugging and Pi integration)
+## Tooling (debugging and Pi integration)
 
-- `scripts/local-run.ts` → bundles to `dist/local-run.js`.
-  - Skips Actions input decoding/compression step and calls `runPlugin` directly.
+- `scripts/local-run.ts` → local harness run directly with Bun.
+  - Skips Actions input decoding/compression and calls `runPlugin` directly.
   - Env: `REAL_PI` toggles real fetch to Pi; `FETCH_TIMEOUT_MS` controls client timeout; `PI_URL` defaults to `http://pi.local:3000`.
 
-- `scripts/pi-dev.sh` → rsync + remote execution on the Raspberry Pi.
-  - `npm run pi:all` → bundle local harness, sync to Pi, run on Pi (sources nvm / PATH for lazy node).
-  - `npm run pi:sync`, `npm run pi:run` → granular control.
-  - `npm run pi:probe` → probes `/api/codex` with multiple payloads.
+- `scripts/pi-git.sh` → Git-based sync on the Raspberry Pi (preferred).
+  - `npm run pi:setup` → clone repo on Pi if missing.
+  - `npm run pi:pull` → fetch/reset to origin for the current branch on Pi.
+
+- `scripts/pi-dev.sh` → Pi API probes only (no file sync).
+  - `npm run pi:probe` → probes `/`, `/api`, `/api/codex` with multiple payloads.
   - `npm run pi:curl` → crafts JSON safely and POSTs via ssh (base64 to avoid quoting issues).
 
 ## Pi Server Contract (for reference)
