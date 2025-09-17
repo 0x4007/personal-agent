@@ -107,6 +107,16 @@ async function codexAgent(context) {
   const contextJson = fetchedContext ? safeStringify(stripUrlFields(fetchedContext)) : "";
   const basePrompt = minimal ? minimalPrompt : richPrompt;
   let prompt = basePrompt;
+  const enablePrefetchLabels = process.env.PROMPT_FETCH_LABELS === "1";
+  let repoLabels = [];
+  if (enablePrefetchLabels) {
+    try {
+      const token2 = selectPatToken({ isSelf });
+      repoLabels = await fetchRepoLabels({ owner, repo, token: token2 });
+    } catch (e) {
+      logger.info("[codexAgent] Prefetch labels failed (non-fatal)", { error: String(e) });
+    }
+  }
   if (contextJson) {
     prompt += `
 

@@ -107,6 +107,17 @@ export async function codexAgent(context: Context): Promise<void> {
   const contextJson = fetchedContext ? safeStringify(stripUrlFields(fetchedContext)) : "";
   const basePrompt = minimal ? minimalPrompt : richPrompt;
   let prompt = basePrompt;
+  // Optional: prefetch repository labels to include in the prompt (disabled by default)
+  const enablePrefetchLabels = (process.env.PROMPT_FETCH_LABELS === "1");
+  let repoLabels: Array<{ name: string; color?: string; description?: string }> = [];
+  if (enablePrefetchLabels) {
+    try {
+      const token = selectPatToken({ isSelf });
+      repoLabels = await fetchRepoLabels({ owner, repo, token });
+    } catch (e) {
+      logger.info("[codexAgent] Prefetch labels failed (non-fatal)", { error: String(e) });
+    }
+  }
   if (contextJson) {
     prompt += `\n\nGitHub context (prefetched):\n\n${wrapJson(contextJson)}`;
   }
