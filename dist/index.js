@@ -50,9 +50,7 @@ async function codexAgent(context) {
   const shouldPost = isSelf;
   const mentionOverride = parseMentionEnv(process.env.PI_MENTION);
   const enablePrefetch = (process.env.PROMPT_FETCH_ISSUE ?? "1") === "1";
-  const enablePrefetchLabels = (process.env.PROMPT_FETCH_LABELS ?? "1") === "1";
   let fetchedContext = null;
-  let repoLabels = [];
   if (enablePrefetch) {
     try {
       const token = selectPatToken({ isSelf });
@@ -60,26 +58,6 @@ async function codexAgent(context) {
     } catch (e) {
       logger.info("[codexAgent] Prefetch failed (non-fatal)", { error: String(e) });
     }
-  }
-  if (enablePrefetchLabels) {
-    try {
-      const token = selectPatToken({ isSelf });
-      repoLabels = await fetchRepoLabels({ owner, repo, token });
-    } catch (e) {
-      logger.info("[codexAgent] Prefetch labels failed (non-fatal)", { error: String(e) });
-    }
-  }
-  if (/\blabels?\b/i.test(command)) {
-    const summary = summarizeIssueContextBrief(fetchedContext);
-    const bodyToPost = renderLabelsMarkdown({ labels: repoLabels, summary });
-    if (shouldPost && bodyToPost.trim()) {
-      const token = selectPatToken({ isSelf });
-      await postGithubComment({ owner, repo, issueNumber, body: bodyToPost, token }, logger);
-      logger.ok("Posted deterministic labels response");
-      return;
-    }
-    logger.ok("Read-only mode (labels fast path): not posting comment.");
-    return;
   }
   const richPrompt = `
   [mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}] repo:${owner}/${repo} ${isPR ? "pr" : "issue"}:${issueNumber} actor:${sender}
@@ -105,12 +83,13 @@ async function codexAgent(context) {
   - Keep paragraphs short (1\u20133 sentences). Prefer lists/tables for dense info. Do not paste huge raw JSON.
 
   Content Rules:
-  - If you read GitHub data (via gh or API), summarize results; do not echo command lines or transcripts.
-  - If context is insufficient, state the single additional input you need in one line, then continue with what can be done now.
+  - Always prefer live reads over inference: if the answer depends on repository data (labels, files, commits, diffs, milestones, prices, etc.), use gh or the GitHub API to read it first; do not guess or invent values.
+  - Summarize results; do not echo command lines or transcripts.
+  - If context is insufficient or shell access fails, state the single additional input or permission you need in one line, then proceed with what can be done now.
   - When listing labels (or similar), prefer bullets like:
-    - \`bug\` \u2014 user\u2011visible defect
-    - \`enhancement\` \u2014 new capability
-    - \`priority:high\` \u2014 respond within 24h
+  - \`bug\` \u2014 user\u2011visible defect
+  - \`enhancement\` \u2014 new capability
+  - \`priority:high\` \u2014 respond within 24h
   - When asked for a plan, produce a short, numbered list (5\u20138 items max), each one line.
   - When asked for acceptance criteria, use bullets with clear, testable statements (concise Given/When/Then is fine).
 
@@ -296,14 +275,6 @@ function sanitizeOutput(output, agentOwner) {
   if (cut !== -1) {
     text = text.slice(cut + "assistant:".length).trim();
   }
-  const looksLikeList = /^\s*[-*]\s+/m.test(text) || /\|/.test(text);
-  if (!looksLikeList) {
-    const sentences = text.replace(/\n+/g, " ").split(/(?<=[.!?])\s+/).filter(Boolean);
-    if (sentences.length > 0) {
-      const lastTwo = sentences.slice(-2).join(" ").trim();
-      text = lastTwo;
-    }
-  }
   text = text.replace(new RegExp(`@${escapeReg(agentOwner)}\\b`, "ig"), agentOwner).trim();
   if (text.length > 600) text = text.slice(-600).trimStart();
   return text.trim();
@@ -402,87 +373,6 @@ async function fetchIssueContext(params) {
   const slimComments = Array.isArray(comments) ? comments.map((c) => ({ author: c.user?.login, created_at: c.created_at, body: c.body, url: c.url })) : [];
   const slimPr = pr ? { merged: !!pr.merged_at, draft: !!pr.draft, head: pr.head?.ref, base: pr.base?.ref, additions: pr.additions, deletions: pr.deletions, changed_files: pr.changed_files, url: pr.url } : null;
   return { issue: slimIssue, comments: slimComments, pr: slimPr };
-}
-async function fetchRepoLabels(params) {
-  const { owner, repo, token } = params;
-  const headers = {
-    "authorization": `Bearer ${token}`,
-    "accept": "application/vnd.github+json",
-    "x-github-api-version": "2022-11-28"
-  };
-  const base = `https://api.github.com/repos/${owner}/${repo}/labels`;
-  const out = [];
-  let page = 1;
-  for (let i = 0; i < 3; i++) {
-    const url = `${base}?per_page=100&page=${page}`;
-    const r = await fetch(url, { headers });
-    if (!r.ok) break;
-    const arr = await r.json();
-    for (const l of arr) out.push({ name: String(l?.name || ""), color: l?.color, description: l?.description });
-    if (arr.length < 100) break;
-    page++;
-  }
-  const seen = /* @__PURE__ */ new Set();
-  return out.filter((l) => {
-    const key = l.name.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).sort((a, b) => a.name.localeCompare(b.name, void 0, { sensitivity: "base" }));
-}
-function renderLabelsMarkdown(params) {
-  const { labels, summary } = params;
-  const lines = [];
-  if (summary && (summary.title || summary.body)) {
-    lines.push("**Summary**");
-    if (summary.title) lines.push(`- Title: ${summary.title}`);
-    if (summary.body) lines.push(`- Description: ${summary.body}`);
-    lines.push("");
-  }
-  lines.push("**Repository Labels**");
-  if (!labels || labels.length === 0) {
-    lines.push("- No labels defined.");
-    return lines.join("\n");
-  }
-  const buckets = {
-    Price: [],
-    Time: [],
-    Priority: [],
-    Severity: [],
-    Type: [],
-    Status: [],
-    Other: []
-  };
-  for (const l of labels) {
-    const n = l.name;
-    const d = l.description || "";
-    const add = (k) => buckets[k].push({ name: n, description: d });
-    if (/^price[:\s]/i.test(n)) add("Price");
-    else if (/^time[:\s]/i.test(n)) add("Time");
-    else if (/^priority[:\s]/i.test(n)) add("Priority");
-    else if (/^severity[:\s]/i.test(n)) add("Severity");
-    else if (/^(type|kind)[:\s]/i.test(n)) add("Type");
-    else if (/^status[:\s]/i.test(n)) add("Status");
-    else add("Other");
-  }
-  const order = ["Priority", "Severity", "Status", "Type", "Price", "Time", "Other"];
-  for (const key of order) {
-    const arr = buckets[key];
-    if (!arr.length) continue;
-    lines.push(`- **${key}**`);
-    for (const item of arr) {
-      const desc = item.description ? ` \u2014 ${item.description}` : "";
-      lines.push(`  - \`${item.name}\`${desc}`);
-    }
-  }
-  return lines.join("\n");
-}
-function summarizeIssueContextBrief(ctx) {
-  if (!ctx || typeof ctx !== "object") return null;
-  const any = ctx;
-  const title = any?.issue?.title ? String(any.issue.title) : void 0;
-  const body = any?.issue?.body ? String(any.issue.body) : void 0;
-  return title || body ? { title, body } : null;
 }
 function stripUrlFields(value) {
   const redundantUrlKey = /_url$/i;
