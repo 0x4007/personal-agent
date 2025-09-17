@@ -48,10 +48,11 @@ async function codexAgent(context) {
   const piBaseUrl = process.env.PI_URL || env.PI_URL || "http://pi.local:3000";
   const timeoutMs = Number(process.env.PI_TIMEOUT_MS || env.PI_TIMEOUT_MS || 3e4);
   const shouldPost = isSelf;
-  const postToGh = false;
   const mentionOverride = parseMentionEnv(process.env.PI_MENTION);
   const enablePrefetch = (process.env.PROMPT_FETCH_ISSUE ?? "1") === "1";
+  const enablePrefetchLabels = (process.env.PROMPT_FETCH_LABELS ?? "1") === "1";
   let fetchedContext = null;
+  let repoLabels = [];
   if (enablePrefetch) {
     try {
       const token = selectPatToken({ isSelf });
@@ -59,6 +60,26 @@ async function codexAgent(context) {
     } catch (e) {
       logger.info("[codexAgent] Prefetch failed (non-fatal)", { error: String(e) });
     }
+  }
+  if (enablePrefetchLabels) {
+    try {
+      const token = selectPatToken({ isSelf });
+      repoLabels = await fetchRepoLabels({ owner, repo, token });
+    } catch (e) {
+      logger.info("[codexAgent] Prefetch labels failed (non-fatal)", { error: String(e) });
+    }
+  }
+  if (/\blabels?\b/i.test(command)) {
+    const summary = summarizeIssueContextBrief(fetchedContext);
+    const bodyToPost = renderLabelsMarkdown({ labels: repoLabels, summary });
+    if (shouldPost && bodyToPost.trim()) {
+      const token = selectPatToken({ isSelf });
+      await postGithubComment({ owner, repo, issueNumber, body: bodyToPost, token }, logger);
+      logger.ok("Posted deterministic labels response");
+      return;
+    }
+    logger.ok("Read-only mode (labels fast path): not posting comment.");
+    return;
   }
   const richPrompt = `
   [mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}] repo:${owner}/${repo} ${isPR ? "pr" : "issue"}:${issueNumber} actor:${sender}
@@ -113,6 +134,17 @@ async function codexAgent(context) {
 GitHub context (prefetched):
 
 ${wrapJson(contextJson)}`;
+  }
+  if (enablePrefetchLabels && repoLabels.length) {
+    try {
+      const labelsJson = safeStringify(repoLabels);
+      prompt += `
+
+Repository labels (prefetched):
+
+${wrapJson(labelsJson)}`;
+    } catch {
+    }
   }
   if (includeEventJson) {
     prompt += `
@@ -370,6 +402,87 @@ async function fetchIssueContext(params) {
   const slimComments = Array.isArray(comments) ? comments.map((c) => ({ author: c.user?.login, created_at: c.created_at, body: c.body, url: c.url })) : [];
   const slimPr = pr ? { merged: !!pr.merged_at, draft: !!pr.draft, head: pr.head?.ref, base: pr.base?.ref, additions: pr.additions, deletions: pr.deletions, changed_files: pr.changed_files, url: pr.url } : null;
   return { issue: slimIssue, comments: slimComments, pr: slimPr };
+}
+async function fetchRepoLabels(params) {
+  const { owner, repo, token } = params;
+  const headers = {
+    "authorization": `Bearer ${token}`,
+    "accept": "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28"
+  };
+  const base = `https://api.github.com/repos/${owner}/${repo}/labels`;
+  const out = [];
+  let page = 1;
+  for (let i = 0; i < 3; i++) {
+    const url = `${base}?per_page=100&page=${page}`;
+    const r = await fetch(url, { headers });
+    if (!r.ok) break;
+    const arr = await r.json();
+    for (const l of arr) out.push({ name: String(l?.name || ""), color: l?.color, description: l?.description });
+    if (arr.length < 100) break;
+    page++;
+  }
+  const seen = /* @__PURE__ */ new Set();
+  return out.filter((l) => {
+    const key = l.name.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => a.name.localeCompare(b.name, void 0, { sensitivity: "base" }));
+}
+function renderLabelsMarkdown(params) {
+  const { labels, summary } = params;
+  const lines = [];
+  if (summary && (summary.title || summary.body)) {
+    lines.push("**Summary**");
+    if (summary.title) lines.push(`- Title: ${summary.title}`);
+    if (summary.body) lines.push(`- Description: ${summary.body}`);
+    lines.push("");
+  }
+  lines.push("**Repository Labels**");
+  if (!labels || labels.length === 0) {
+    lines.push("- No labels defined.");
+    return lines.join("\n");
+  }
+  const buckets = {
+    Price: [],
+    Time: [],
+    Priority: [],
+    Severity: [],
+    Type: [],
+    Status: [],
+    Other: []
+  };
+  for (const l of labels) {
+    const n = l.name;
+    const d = l.description || "";
+    const add = (k) => buckets[k].push({ name: n, description: d });
+    if (/^price[:\s]/i.test(n)) add("Price");
+    else if (/^time[:\s]/i.test(n)) add("Time");
+    else if (/^priority[:\s]/i.test(n)) add("Priority");
+    else if (/^severity[:\s]/i.test(n)) add("Severity");
+    else if (/^(type|kind)[:\s]/i.test(n)) add("Type");
+    else if (/^status[:\s]/i.test(n)) add("Status");
+    else add("Other");
+  }
+  const order = ["Priority", "Severity", "Status", "Type", "Price", "Time", "Other"];
+  for (const key of order) {
+    const arr = buckets[key];
+    if (!arr.length) continue;
+    lines.push(`- **${key}**`);
+    for (const item of arr) {
+      const desc = item.description ? ` \u2014 ${item.description}` : "";
+      lines.push(`  - \`${item.name}\`${desc}`);
+    }
+  }
+  return lines.join("\n");
+}
+function summarizeIssueContextBrief(ctx) {
+  if (!ctx || typeof ctx !== "object") return null;
+  const any = ctx;
+  const title = any?.issue?.title ? String(any.issue.title) : void 0;
+  const body = any?.issue?.body ? String(any.issue.body) : void 0;
+  return title || body ? { title, body } : null;
 }
 function stripUrlFields(value) {
   const redundantUrlKey = /_url$/i;
