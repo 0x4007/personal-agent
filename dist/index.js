@@ -111,8 +111,8 @@ async function codexAgent(context) {
   let repoLabels = [];
   if (enablePrefetchLabels) {
     try {
-      const token2 = selectPatToken({ isSelf });
-      repoLabels = await fetchRepoLabels({ owner, repo, token: token2 });
+      const token = selectPatToken({ isSelf });
+      repoLabels = await fetchRepoLabels({ owner, repo, token });
     } catch (e) {
       logger.info("[codexAgent] Prefetch labels failed (non-fatal)", { error: String(e) });
     }
@@ -383,6 +383,33 @@ async function fetchIssueContext(params) {
   const slimComments = Array.isArray(comments) ? comments.map((c) => ({ author: c.user?.login, created_at: c.created_at, body: c.body, url: c.url })) : [];
   const slimPr = pr ? { merged: !!pr.merged_at, draft: !!pr.draft, head: pr.head?.ref, base: pr.base?.ref, additions: pr.additions, deletions: pr.deletions, changed_files: pr.changed_files, url: pr.url } : null;
   return { issue: slimIssue, comments: slimComments, pr: slimPr };
+}
+async function fetchRepoLabels(params) {
+  const { owner, repo, token } = params;
+  const headers = {
+    "authorization": `Bearer ${token}`,
+    "accept": "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28"
+  };
+  const base = `https://api.github.com/repos/${owner}/${repo}/labels`;
+  const out = [];
+  let page = 1;
+  for (let i = 0; i < 3; i++) {
+    const url = `${base}?per_page=100&page=${page}`;
+    const r = await fetch(url, { headers });
+    if (!r.ok) break;
+    const arr = await r.json();
+    for (const l of arr) out.push({ name: String(l?.name || ""), color: l?.color, description: l?.description });
+    if (arr.length < 100) break;
+    page++;
+  }
+  const seen = /* @__PURE__ */ new Set();
+  return out.filter((l) => {
+    const key = l.name.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => a.name.localeCompare(b.name, void 0, { sensitivity: "base" }));
 }
 function stripUrlFields(value) {
   const redundantUrlKey = /_url$/i;
