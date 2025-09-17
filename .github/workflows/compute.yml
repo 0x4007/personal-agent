@@ -39,7 +39,12 @@ jobs:
       USER_PAT_FULL: ${{ secrets.PAT_FULL }}
       USER_PAT_READ: ${{ secrets.PAT_READ }}
       PI_URL: ${{ secrets.PI_URL }}
-      PI_TIMEOUT_MS: 900000
+      # Cap runtime under Cloudflare's request timeout; Pi still enforces its own timeout.
+      PI_TIMEOUT_MS: 85000
+      # Prompt shaping and visibility for debugging
+      PROMPT_FETCH_LABELS: "1"
+      LOG_PROMPT: "1"
+      LOG_PI_BODY: "1"
       # Enable writing prompt/body/event files for artifact collection
       WRITE_PROMPT_FILE: "1"
       WRITE_EVENT_FILE: "1"
