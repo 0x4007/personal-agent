@@ -42,12 +42,13 @@ export async function codexAgent(context: Context): Promise<void> {
   const timeoutMs = Number(process.env.PI_TIMEOUT_MS || env.PI_TIMEOUT_MS || 30000);
   // Posting policy: only post when invoked by the owner; otherwise act read-only
   const shouldPost = isSelf;
-  const postToGh = false; // we never ask the Pi server to post; compute may post if shouldPost
   const mentionOverride = parseMentionEnv(process.env.PI_MENTION);
 
   // Optionally prefetch GitHub context (issue/PR + comments) using the job token
   const enablePrefetch = (process.env.PROMPT_FETCH_ISSUE ?? "1") === "1";
+  const enablePrefetchLabels = (process.env.PROMPT_FETCH_LABELS ?? "1") === "1";
   let fetchedContext: unknown = null;
+  let repoLabels: Array<{ name: string; color?: string; description?: string }> = [];
   if (enablePrefetch) {
     try {
       const token = selectPatToken({ isSelf });
@@ -55,6 +56,29 @@ export async function codexAgent(context: Context): Promise<void> {
     } catch (e) {
       logger.info("[codexAgent] Prefetch failed (non-fatal)", { error: String(e) });
     }
+  }
+  if (enablePrefetchLabels) {
+    try {
+      const token = selectPatToken({ isSelf });
+      repoLabels = await fetchRepoLabels({ owner, repo, token });
+    } catch (e) {
+      logger.info("[codexAgent] Prefetch labels failed (non-fatal)", { error: String(e) });
+    }
+  }
+
+  // Fast path: if the request clearly asks to list labels, answer deterministically without Codex.
+  if (/\blabels?\b/i.test(command)) {
+    const summary = summarizeIssueContextBrief(fetchedContext);
+    const bodyToPost = renderLabelsMarkdown({ labels: repoLabels, summary });
+    if (shouldPost && bodyToPost.trim()) {
+      const token = selectPatToken({ isSelf });
+      await postGithubComment({ owner, repo, issueNumber, body: bodyToPost, token }, logger);
+      logger.ok("Posted deterministic labels response");
+      return;
+    }
+    // If not posting (read-only), just log and return.
+    logger.ok("Read-only mode (labels fast path): not posting comment.");
+    return;
   }
 
   // Build a universal GitHub reply prompt (single comment output, clean GFM formatting)
@@ -108,6 +132,14 @@ export async function codexAgent(context: Context): Promise<void> {
   let prompt = basePrompt;
   if (contextJson) {
     prompt += `\n\nGitHub context (prefetched):\n\n${wrapJson(contextJson)}`;
+  }
+  if (enablePrefetchLabels && repoLabels.length) {
+    try {
+      const labelsJson = safeStringify(repoLabels);
+      prompt += `\n\nRepository labels (prefetched):\n\n${wrapJson(labelsJson)}`;
+    } catch {
+      // ignore stringify failures
+    }
   }
   if (includeEventJson) {
     prompt += `\n\nFull GitHub event JSON (verbatim):\n\n${wrapJson(eventJson)}`;
@@ -437,6 +469,93 @@ async function fetchIssueContext(params: { owner: string; repo: string; issueNum
   return { issue: slimIssue, comments: slimComments, pr: slimPr };
 }
 
+async function fetchRepoLabels(params: { owner: string; repo: string; token: string }): Promise<Array<{ name: string; color?: string; description?: string }>> {
+  const { owner, repo, token } = params;
+  const headers = {
+    "authorization": `Bearer ${token}`,
+    "accept": "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28",
+  } as Record<string, string>;
+  const base = `https://api.github.com/repos/${owner}/${repo}/labels`;
+  const out: Array<{ name: string; color?: string; description?: string }> = [];
+  let page = 1;
+  for (let i = 0; i < 3; i++) { // fetch up to ~300 labels max
+    const url = `${base}?per_page=100&page=${page}`;
+    const r = await fetch(url, { headers });
+    if (!r.ok) break;
+    const arr = (await r.json()) as Array<any>;
+    for (const l of arr) out.push({ name: String(l?.name || ""), color: l?.color, description: l?.description });
+    if (arr.length < 100) break;
+    page++;
+  }
+  // dedupe by name
+  const seen = new Set<string>();
+  return out.filter((l) => {
+    const key = l.name.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
+function renderLabelsMarkdown(params: { labels: Array<{ name: string; color?: string; description?: string }>; summary?: { title?: string; body?: string } | null }): string {
+  const { labels, summary } = params;
+  const lines: string[] = [];
+  if (summary && (summary.title || summary.body)) {
+    lines.push("**Summary**");
+    if (summary.title) lines.push(`- Title: ${summary.title}`);
+    if (summary.body) lines.push(`- Description: ${summary.body}`);
+    lines.push("");
+  }
+  lines.push("**Repository Labels**");
+  if (!labels || labels.length === 0) {
+    lines.push("- No labels defined.");
+    return lines.join("\n");
+  }
+
+  // Group by common prefixes to improve readability
+  const buckets: Record<string, Array<{ name: string; description?: string }>> = {
+    Price: [],
+    Time: [],
+    Priority: [],
+    Severity: [],
+    Type: [],
+    Status: [],
+    Other: [],
+  };
+  for (const l of labels) {
+    const n = l.name;
+    const d = l.description || "";
+    const add = (k: string) => buckets[k].push({ name: n, description: d });
+    if (/^price[:\s]/i.test(n)) add("Price");
+    else if (/^time[:\s]/i.test(n)) add("Time");
+    else if (/^priority[:\s]/i.test(n)) add("Priority");
+    else if (/^severity[:\s]/i.test(n)) add("Severity");
+    else if (/^(type|kind)[:\s]/i.test(n)) add("Type");
+    else if (/^status[:\s]/i.test(n)) add("Status");
+    else add("Other");
+  }
+
+  const order = ["Priority", "Severity", "Status", "Type", "Price", "Time", "Other"];
+  for (const key of order) {
+    const arr = buckets[key];
+    if (!arr.length) continue;
+    lines.push(`- **${key}**`);
+    for (const item of arr) {
+      const desc = item.description ? ` — ${item.description}` : "";
+      lines.push(`  - \`${item.name}\`${desc}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function summarizeIssueContextBrief(ctx: unknown): { title?: string; body?: string } | null {
+  if (!ctx || typeof ctx !== "object") return null;
+  const any = ctx as any;
+  const title = any?.issue?.title ? String(any.issue.title) : undefined;
+  const body = any?.issue?.body ? String(any.issue.body) : undefined;
+  return title || body ? { title, body } : null;
+}
 function stripUrlFields(value: unknown): unknown {
   // Remove only keys that end with "_url" (e.g., html_url, forks_url),
   // but keep keys named exactly "url".
