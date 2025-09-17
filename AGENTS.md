@@ -2,6 +2,15 @@
 
 This repository is optimized for instant cold‑boot CI. Follow these rules strictly.
 
+## Purpose
+
+- Build a generalized personal agent/assistant — not a collection of special‑case tools.
+- Near‑term primary scope: GitHub operations.
+  - Examples: review pull requests, summarize/triage issues, answer questions about the codebase, propose changes, and draft comments.
+  - The agent should prefer live reads (via `gh` or GitHub API) over guessing, and return clean GitHub‑flavored Markdown replies.
+- Beyond GitHub: we will later connect the same generalized core to other systems/channels (e.g., Telegram, Google Drive, etc.). Keep the design channel‑agnostic so adapters can be added without forking logic.
+- Do NOT add “fast paths” or command‑specific branches — improve the prompt/context or execution environment instead.
+
 ## Compute Workflow Rules
 
 - DO NOT install dependencies in `.github/workflows/compute.yml`.
