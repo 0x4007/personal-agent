@@ -60,19 +60,44 @@ async function codexAgent(context) {
       logger.info("[codexAgent] Prefetch failed (non-fatal)", { error: String(e) });
     }
   }
-  const richPrompt = [
-    `[mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}]`,
-    `repo:${owner}/${repo}`,
-    `${isPR ? "pr" : "issue"}:${issueNumber}`,
-    `actor:${sender}`,
-    `Environment: Linux shell on Raspberry Pi with git and the GitHub CLI (gh) installed. The gh CLI is already authenticated as @${agentOwner} with access to private repos.`,
-    `Rules for GitHub access: use gh for all GitHub reads (issues, PRs, files, comments, diffs). Prefer structured JSON, e.g. gh issue view ${issueNumber} --json title,body,comments or gh pr view --json files,commits. If raw REST is needed, use gh api with -q for JMESPath. Do not request credentials or tokens.`,
-    `Posting policy: do NOT post comments yourself; output only the final comment text. The runner will post your final answer.`,
-    `
-User request: ${command}`,
-    `
-Instructions: Provide a helpful, concise answer. Consider repo code and ${isPR ? "PR diffs and discussion" : "issue discussion"}. Output plain text suitable for a GitHub comment.`
-  ].join(" ");
+  const richPrompt = `
+  [mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}] repo:${owner}/${repo} ${isPR ? "pr" : "issue"}:${issueNumber} actor:${sender}
+  Environment: Linux shell with GitHub CLI (gh) available and authenticated as @${agentOwner}.
+  You are a GitHub assistant. You always return a single GitHub comment (no preamble, no wrappers).
+
+  User request:
+  ${command}
+
+  Output Contract:
+  - Output only the final comment text to post on GitHub.
+  - Do NOT include system messages, logs, markers (e.g., GH_*_OK), transcripts, or thinking.
+  - Do NOT @mention any user or team (avoid loops). If you must reference a handle, render as plain text or code.
+
+  Style & Formatting (GitHub\u2011flavored Markdown):
+  - Use short headings to structure longer replies only when helpful.
+  - Prefer bullet lists for enumerations; use one bullet per item.
+    - Never compress many items into one bullet via hyphens/commas; use multiple bullets instead.
+    - For 12+ similar items, a compact table is allowed if it improves scanability.
+  - Use checklists for actionable tasks (e.g., "- [ ] Step").
+  - Use code fences for commands, code, diffs, or JSON (\`\`\`bash, \`\`\`ts, \`\`\`json, \`\`\`diff).
+  - Link concisely with Markdown links or short refs (owner/repo#123). Avoid dumping long raw URLs.
+  - Keep paragraphs short (1\u20133 sentences). Prefer lists/tables for dense info. Do not paste huge raw JSON.
+
+  Content Rules:
+  - If you read GitHub data (via gh or API), summarize results; do not echo command lines or transcripts.
+  - If context is insufficient, state the single additional input you need in one line, then continue with what can be done now.
+  - When listing labels (or similar), prefer bullets like:
+    - \`bug\` \u2014 user\u2011visible defect
+    - \`enhancement\` \u2014 new capability
+    - \`priority:high\` \u2014 respond within 24h
+  - When asked for a plan, produce a short, numbered list (5\u20138 items max), each one line.
+  - When asked for acceptance criteria, use bullets with clear, testable statements (concise Given/When/Then is fine).
+
+  Safety & Etiquette:
+  - No secrets or tokens.
+  - Do not self\u2011trigger loops (no mentions in output).
+
+  Produce only the final GitHub comment now.`.replace(/\n\s+/g, "\n");
   const minimalPrompt = command;
   const minimal = process.env.PI_MINIMAL === "1";
   const includeEventJson = process.env.PROMPT_INCLUDE_EVENT === "1" || process.env.INCLUDE_GH_EVENT === "1";
@@ -195,6 +220,8 @@ function sanitizeOutput(output, agentOwner) {
     /^Planned (fetch|GitHub fetch)/i,
     /^Fetch I.?d run:/i,
     /^Command I.?d run:/i,
+    /^You can also run:/i,
+    /gh\s+issue\s+view\s+\d+/i,
     /^exec\b/i,
     /^bash -lc/i,
     /^codex$/i,
@@ -210,7 +237,24 @@ function sanitizeOutput(output, agentOwner) {
     kept.push(trimmed);
   }
   text = kept.join("\n");
+  text = text.replace(/\bGH(?:_[A-Z]+)?_OK\b/g, "");
   text = text.replace(/\n{3,}/g, "\n\n").trim();
+  const commaCount = (text.match(/,/g) || []).length;
+  const newlineCount = (text.match(/\n/g) || []).length;
+  const hasBullets = /^\s*[-*]\s+/m.test(text) || /\|/.test(text);
+  if (!hasBullets && newlineCount <= 2 && commaCount >= 8) {
+    const items = text.split(",").map((s) => s.trim()).filter(Boolean);
+    const seen = /* @__PURE__ */ new Set();
+    const bullets = items.filter((s) => {
+      const k = s.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    if (bullets.length > 0) {
+      text = bullets.map((s) => `- ${s}`).join("\n");
+    }
+  }
   const markers = ["assistant:", "Assistant:"];
   let cut = -1;
   for (const m of markers) {
@@ -220,10 +264,13 @@ function sanitizeOutput(output, agentOwner) {
   if (cut !== -1) {
     text = text.slice(cut + "assistant:".length).trim();
   }
-  const sentences = text.replace(/\n+/g, " ").split(/(?<=[.!?])\s+/).filter(Boolean);
-  if (sentences.length > 0) {
-    const lastTwo = sentences.slice(-2).join(" ").trim();
-    text = lastTwo;
+  const looksLikeList = /^\s*[-*]\s+/m.test(text) || /\|/.test(text);
+  if (!looksLikeList) {
+    const sentences = text.replace(/\n+/g, " ").split(/(?<=[.!?])\s+/).filter(Boolean);
+    if (sentences.length > 0) {
+      const lastTwo = sentences.slice(-2).join(" ").trim();
+      text = lastTwo;
+    }
   }
   text = text.replace(new RegExp(`@${escapeReg(agentOwner)}\\b`, "ig"), agentOwner).trim();
   if (text.length > 600) text = text.slice(-600).trimStart();
