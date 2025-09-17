@@ -46,9 +46,7 @@ export async function codexAgent(context: Context): Promise<void> {
 
   // Optionally prefetch GitHub context (issue/PR + comments) using the job token
   const enablePrefetch = (process.env.PROMPT_FETCH_ISSUE ?? "1") === "1";
-  const enablePrefetchLabels = (process.env.PROMPT_FETCH_LABELS ?? "1") === "1";
   let fetchedContext: unknown = null;
-  let repoLabels: Array<{ name: string; color?: string; description?: string }> = [];
   if (enablePrefetch) {
     try {
       const token = selectPatToken({ isSelf });
@@ -57,29 +55,7 @@ export async function codexAgent(context: Context): Promise<void> {
       logger.info("[codexAgent] Prefetch failed (non-fatal)", { error: String(e) });
     }
   }
-  if (enablePrefetchLabels) {
-    try {
-      const token = selectPatToken({ isSelf });
-      repoLabels = await fetchRepoLabels({ owner, repo, token });
-    } catch (e) {
-      logger.info("[codexAgent] Prefetch labels failed (non-fatal)", { error: String(e) });
-    }
-  }
-
-  // Fast path: if the request clearly asks to list labels, answer deterministically without Codex.
-  if (/\blabels?\b/i.test(command)) {
-    const summary = summarizeIssueContextBrief(fetchedContext);
-    const bodyToPost = renderLabelsMarkdown({ labels: repoLabels, summary });
-    if (shouldPost && bodyToPost.trim()) {
-      const token = selectPatToken({ isSelf });
-      await postGithubComment({ owner, repo, issueNumber, body: bodyToPost, token }, logger);
-      logger.ok("Posted deterministic labels response");
-      return;
-    }
-    // If not posting (read-only), just log and return.
-    logger.ok("Read-only mode (labels fast path): not posting comment.");
-    return;
-  }
+  // No fast paths: always go through Codex (generalized system)
 
   // Build a universal GitHub reply prompt (single comment output, clean GFM formatting)
   const richPrompt = `
@@ -106,12 +82,13 @@ export async function codexAgent(context: Context): Promise<void> {
   - Keep paragraphs short (1–3 sentences). Prefer lists/tables for dense info. Do not paste huge raw JSON.
 
   Content Rules:
-  - If you read GitHub data (via gh or API), summarize results; do not echo command lines or transcripts.
-  - If context is insufficient, state the single additional input you need in one line, then continue with what can be done now.
+  - Always prefer live reads over inference: if the answer depends on repository data (labels, files, commits, diffs, milestones, prices, etc.), use gh or the GitHub API to read it first; do not guess or invent values.
+  - Summarize results; do not echo command lines or transcripts.
+  - If context is insufficient or shell access fails, state the single additional input or permission you need in one line, then proceed with what can be done now.
   - When listing labels (or similar), prefer bullets like:
-    - \`bug\` — user‑visible defect
-    - \`enhancement\` — new capability
-    - \`priority:high\` — respond within 24h
+  - \`bug\` — user‑visible defect
+  - \`enhancement\` — new capability
+  - \`priority:high\` — respond within 24h
   - When asked for a plan, produce a short, numbered list (5–8 items max), each one line.
   - When asked for acceptance criteria, use bullets with clear, testable statements (concise Given/When/Then is fine).
 
@@ -315,19 +292,7 @@ function sanitizeOutput(output: string, agentOwner: string): string {
     text = text.slice(cut + "assistant:".length).trim();
   }
 
-  // 5) Limit to the last 2 sentences ONLY for paragraph-style text.
-  //    If it looks like a list/table, keep as-is for readability.
-  const looksLikeList = /^\s*[-*]\s+/m.test(text) || /\|/.test(text);
-  if (!looksLikeList) {
-    const sentences = text
-      .replace(/\n+/g, " ")
-      .split(/(?<=[.!?])\s+/)
-      .filter(Boolean);
-    if (sentences.length > 0) {
-      const lastTwo = sentences.slice(-2).join(" ").trim();
-      text = lastTwo;
-    }
-  }
+  // Keep full content (no sentence truncation); lists/tables are already preserved above.
 
   // 6) Ensure we don't accidentally re-mention owner in the remainder
   text = text.replace(new RegExp(`@${escapeReg(agentOwner)}\\b`, "ig"), agentOwner).trim();

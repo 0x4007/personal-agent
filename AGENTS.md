@@ -146,6 +146,11 @@ Notes:
 - `PI_TIMEOUT_MS` → forwarded as `timeout_ms` in the Pi payload.
 - `PI_POST` → boolean; server posting on/off.
 - `PI_MINIMAL=1` → switch to a compact prompt body (reduces Codex timeouts).
+- `PROMPT_FETCH_ISSUE=1` → prefetch issue/PR + comments (default on).
+- `PROMPT_FETCH_LABELS=1` → prefetch repository labels and embed into prompt (default on). Also enables a fast path.
+
+## Deterministic Fast Paths (skip Pi/Codex)
+Do NOT add any special‑case fast paths. This project must remain a generalized system. All requests flow through the same Codex path (with optional prefetched context like the issue/PR + comments). If you need better accuracy, improve the prompt or context — do not branch behavior based on the command.
 
 ## Prompt Guidance for “Hello world” verification
 
