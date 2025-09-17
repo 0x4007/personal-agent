@@ -65,6 +65,7 @@ export async function codexAgent(context: Context): Promise<void> {
     `actor:${sender}`,
     `Environment: Linux shell on Raspberry Pi with git and the GitHub CLI (gh) installed. The gh CLI is already authenticated as @${agentOwner} with access to private repos.`,
     `Rules for GitHub access: use gh for all GitHub reads (issues, PRs, files, comments, diffs). Prefer structured JSON, e.g. gh issue view ${issueNumber} --json title,body,comments or gh pr view --json files,commits. If raw REST is needed, use gh api with -q for JMESPath. Do not request credentials or tokens.`,
+    `Response formatting: Use GitHub‑flavored Markdown. Prefer short section headers when helpful, bullet lists for items, and tables for structured data. Avoid single-line comma-separated dumps. Keep it concise and readable. Do not include any test markers (e.g., GH_OK) in the final answer.`,
     `Posting policy: do NOT post comments yourself; output only the final comment text. The runner will post your final answer.`,
     `\nUser request: ${command}`,
     `\nInstructions: Provide a helpful, concise answer. Consider repo code and ${isPR ? "PR diffs and discussion" : "issue discussion"}. Output plain text suitable for a GitHub comment.`,
@@ -218,8 +219,32 @@ function sanitizeOutput(output: string, agentOwner: string): string {
   }
   text = kept.join("\n");
 
+  // Remove explicit test markers like GH_OK, GH_LABELS_OK, etc.
+  text = text.replace(/\bGH(?:_[A-Z]+)?_OK\b/g, "");
+
   // 3) Collapse multiple blank lines
   text = text.replace(/\n{3,}/g, "\n\n").trim();
+
+  // 3.5) If the content looks like a big CSV (few newlines, many commas), present as bullets
+  const commaCount = (text.match(/,/g) || []).length;
+  const newlineCount = (text.match(/\n/g) || []).length;
+  const hasBullets = /^\s*[-*]\s+/m.test(text) || /\|/.test(text);
+  if (!hasBullets && newlineCount <= 2 && commaCount >= 8) {
+    const items = text
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const seen = new Set<string>();
+    const bullets = items.filter((s) => {
+      const k = s.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    if (bullets.length > 0) {
+      text = bullets.map((s) => `- ${s}`).join("\n");
+    }
+  }
 
   // 4) If there are conversation markers, keep only the last assistant-like section
   const markers = ["assistant:", "Assistant:"];
@@ -232,14 +257,18 @@ function sanitizeOutput(output: string, agentOwner: string): string {
     text = text.slice(cut + "assistant:".length).trim();
   }
 
-  // 5) Limit to the last 2 sentences to keep replies concise
-  const sentences = text
-    .replace(/\n+/g, " ")
-    .split(/(?<=[.!?])\s+/)
-    .filter(Boolean);
-  if (sentences.length > 0) {
-    const lastTwo = sentences.slice(-2).join(" ").trim();
-    text = lastTwo;
+  // 5) Limit to the last 2 sentences ONLY for paragraph-style text.
+  //    If it looks like a list/table, keep as-is for readability.
+  const looksLikeList = /^\s*[-*]\s+/m.test(text) || /\|/.test(text);
+  if (!looksLikeList) {
+    const sentences = text
+      .replace(/\n+/g, " ")
+      .split(/(?<=[.!?])\s+/)
+      .filter(Boolean);
+    if (sentences.length > 0) {
+      const lastTwo = sentences.slice(-2).join(" ").trim();
+      text = lastTwo;
+    }
   }
 
   // 6) Ensure we don't accidentally re-mention owner in the remainder
