@@ -131,6 +131,19 @@ What to check next
   - `pi-request-<run_id>.json` → exact body to Pi (shows `issue`, `post:false`, `mention:false`)
   - `event-<run_id>.json` → decoded event (for debugging dispatch)
 
+## Universal GitHub Reply Prompt (live)
+
+We use a single rich prompt tuned for GitHub comments. Key properties:
+- Output only the final comment (no wrappers/logs).
+- No @mentions (prevents loops); no test markers (e.g., GH_*_OK).
+- Strong GitHub‑flavored Markdown guidance:
+  - One bullet per item for enumerations. Don’t compress lists into a single bullet with hyphens/commas.
+  - For 12+ similar items, a compact table is allowed if it improves readability.
+  - Use checklists for actionable tasks; code fences for commands/snippets/diffs/JSON; short paragraphs.
+- If context is insufficient, ask for exactly one specific input in a single line, then proceed with what can be done now.
+
+Where it lives: `src/handlers/codex-agent.ts` in the `richPrompt` builder. Enable `LOG_PROMPT=1` to capture it in artifacts as `runtime-logs/prompt-<run_id>.txt`.
+
 ## Open Issues / Next Steps
 
 - Codex timeouts (code 143) on rich prompts (expected while we stabilize)

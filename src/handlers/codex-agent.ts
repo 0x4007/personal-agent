@@ -57,19 +57,45 @@ export async function codexAgent(context: Context): Promise<void> {
     }
   }
 
-  // Build prompts
-  const richPrompt = [
-    `[mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}]`,
-    `repo:${owner}/${repo}`,
-    `${isPR ? "pr" : "issue"}:${issueNumber}`,
-    `actor:${sender}`,
-    `Environment: Linux shell on Raspberry Pi with git and the GitHub CLI (gh) installed. The gh CLI is already authenticated as @${agentOwner} with access to private repos.`,
-    `Rules for GitHub access: use gh for all GitHub reads (issues, PRs, files, comments, diffs). Prefer structured JSON, e.g. gh issue view ${issueNumber} --json title,body,comments or gh pr view --json files,commits. If raw REST is needed, use gh api with -q for JMESPath. Do not request credentials or tokens.`,
-    `Response formatting: Use GitHub‑flavored Markdown. Prefer short section headers when helpful, bullet lists for items, and tables for structured data. Avoid single-line comma-separated dumps. Keep it concise and readable. Do not include any test markers (e.g., GH_OK) in the final answer.`,
-    `Posting policy: do NOT post comments yourself; output only the final comment text. The runner will post your final answer.`,
-    `\nUser request: ${command}`,
-    `\nInstructions: Provide a helpful, concise answer. Consider repo code and ${isPR ? "PR diffs and discussion" : "issue discussion"}. Output plain text suitable for a GitHub comment.`,
-  ].join(" ");
+  // Build a universal GitHub reply prompt (single comment output, clean GFM formatting)
+  const richPrompt = `
+  [mode:${accessLevel}] [type:${isPR ? "pr" : "issue"}] repo:${owner}/${repo} ${isPR ? "pr" : "issue"}:${issueNumber} actor:${sender}
+  Environment: Linux shell with GitHub CLI (gh) available and authenticated as @${agentOwner}.
+  You are a GitHub assistant. You always return a single GitHub comment (no preamble, no wrappers).
+
+  User request:
+  ${command}
+
+  Output Contract:
+  - Output only the final comment text to post on GitHub.
+  - Do NOT include system messages, logs, markers (e.g., GH_*_OK), transcripts, or thinking.
+  - Do NOT @mention any user or team (avoid loops). If you must reference a handle, render as plain text or code.
+
+  Style & Formatting (GitHub‑flavored Markdown):
+  - Use short headings to structure longer replies only when helpful.
+  - Prefer bullet lists for enumerations; use one bullet per item.
+    - Never compress many items into one bullet via hyphens/commas; use multiple bullets instead.
+    - For 12+ similar items, a compact table is allowed if it improves scanability.
+  - Use checklists for actionable tasks (e.g., "- [ ] Step").
+  - Use code fences for commands, code, diffs, or JSON (\`\`\`bash, \`\`\`ts, \`\`\`json, \`\`\`diff).
+  - Link concisely with Markdown links or short refs (owner/repo#123). Avoid dumping long raw URLs.
+  - Keep paragraphs short (1–3 sentences). Prefer lists/tables for dense info. Do not paste huge raw JSON.
+
+  Content Rules:
+  - If you read GitHub data (via gh or API), summarize results; do not echo command lines or transcripts.
+  - If context is insufficient, state the single additional input you need in one line, then continue with what can be done now.
+  - When listing labels (or similar), prefer bullets like:
+    - \`bug\` — user‑visible defect
+    - \`enhancement\` — new capability
+    - \`priority:high\` — respond within 24h
+  - When asked for a plan, produce a short, numbered list (5–8 items max), each one line.
+  - When asked for acceptance criteria, use bullets with clear, testable statements (concise Given/When/Then is fine).
+
+  Safety & Etiquette:
+  - No secrets or tokens.
+  - Do not self‑trigger loops (no mentions in output).
+
+  Produce only the final GitHub comment now.`.replace(/\n\s+/g, "\n");
   const minimalPrompt = command;
   const minimal = process.env.PI_MINIMAL === "1";
   // Optionally append the entire raw GitHub event payload to the prompt for full context
