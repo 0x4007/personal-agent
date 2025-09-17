@@ -69,7 +69,7 @@ async function codexAgent(context) {
 
   Output Contract:
   - Output only the final comment text to post on GitHub.
-  - Do NOT include system messages, logs, markers (e.g., GH_*_OK), transcripts, or thinking.
+  - Do NOT include role labels (assistant:, system:, user:), system messages, logs, markers (e.g., GH_*_OK), transcripts, or thinking.
   - Do NOT @mention any user or team (avoid loops). If you must reference a handle, render as plain text or code.
 
   Style & Formatting (GitHub\u2011flavored Markdown):
@@ -79,8 +79,10 @@ async function codexAgent(context) {
     - For 12+ similar items, a compact table is allowed if it improves scanability.
   - Use checklists for actionable tasks (e.g., "- [ ] Step").
   - Use code fences for commands, code, diffs, or JSON (\`\`\`bash, \`\`\`ts, \`\`\`json, \`\`\`diff).
+  - Do NOT wrap the entire response in a code block; only fence code/diff/json snippets.
   - Link concisely with Markdown links or short refs (owner/repo#123). Avoid dumping long raw URLs.
   - Keep paragraphs short (1\u20133 sentences). Prefer lists/tables for dense info. Do not paste huge raw JSON.
+  - Keep it concise: target ~800 characters unless a longer list is explicitly requested.
 
   Content Rules:
   - Always prefer live reads over inference: if the answer depends on repository data (labels, files, commits, diffs, milestones, prices, etc.), use gh or the GitHub API to read it first; do not guess or invent values.
@@ -142,6 +144,12 @@ Full GitHub event JSON (verbatim):
 
 ${wrapJson(eventJson)}`;
   }
+  const promptMaxLenRaw = Number(process.env.PROMPT_MAX_LEN || env.PROMPT_MAX_LEN || 0);
+  const promptMaxLen = Number.isFinite(promptMaxLenRaw) && promptMaxLenRaw > 0 ? Math.floor(promptMaxLenRaw) : 0;
+  if (!minimal && promptMaxLen > 0 && prompt.length > promptMaxLen) {
+    logger.info("[codexAgent] Prompt exceeds PROMPT_MAX_LEN, falling back to minimal", { len: prompt.length, max: promptMaxLen });
+    prompt = minimalPrompt;
+  }
   try {
     if (process.env.LOG_PAYLOAD === "1") {
       logger.info("[codexAgent] GH payload (raw)", { payload });
@@ -170,16 +178,48 @@ ${wrapJson(eventJson)}`;
       } catch (e) {
       }
     }
-    const resp = await fetch(`${piBaseUrl}/api/codex`, {
+    const runId = process.env.GITHUB_RUN_ID || "";
+    const runRepo = process.env.GITHUB_REPOSITORY || "";
+    const runAttempt = process.env.GITHUB_RUN_ATTEMPT || "";
+    async function fetchWithTimeoutRetry(url, init, retries = 1) {
+      const ctl = new AbortController();
+      const t = init.timeout && init.timeout > 0 ? setTimeout(() => ctl.abort("timeout"), Math.floor(init.timeout)) : void 0;
+      try {
+        return await fetch(url, { ...init, signal: ctl.signal });
+      } catch (err) {
+        if (retries > 0) {
+          const msg = String(err || "");
+          if (msg.includes("timeout") || msg.includes("fetch") || msg.includes("network")) {
+            await new Promise((r) => setTimeout(r, 1e3));
+            return await fetchWithTimeoutRetry(url, init, retries - 1);
+          }
+        }
+        throw err;
+      } finally {
+        if (t) clearTimeout(t);
+      }
+    }
+    const resp = await fetchWithTimeoutRetry(`${piBaseUrl}/api/codex`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body2)
-    });
+      headers: {
+        "content-type": "application/json",
+        "x-run-id": runId,
+        "x-run-repo": runRepo,
+        "x-run-attempt": runAttempt,
+        "x-agent-owner": String(agentOwner || "")
+      },
+      body: JSON.stringify(body2),
+      // Give the HTTP call slightly more than Codex time to return the JSON
+      timeout: Math.max(1e3, Math.min(timeoutMs + 3e4, 18e5))
+    }, 1);
     if (!resp.ok) {
       const txt = await safeText(resp);
       throw new Error(`Pi /api/codex HTTP ${resp.status}: ${txt}`);
     }
     const data = await resp.json();
+    if (data?.req_id) {
+      logger.info("[codexAgent] Pi request id", { reqId: data.req_id, runId: data.run_id || runId });
+    }
     if (!data.ok) throw new Error(`Pi /api/codex failed (code ${data.code}): ${data.error || "unknown error"}`);
     if (shouldPost) {
       const clean = sanitizeOutput(String(data.output || ""), agentOwner);
@@ -222,71 +262,8 @@ function wrapJson(json) {
 }
 function sanitizeOutput(output, agentOwner) {
   let text = output || "";
-  const mentionAny = new RegExp(`(^|\\n)@${escapeReg(agentOwner)}\\b[^\\n]*\\n`, "ig");
-  text = text.replace(mentionAny, "\n");
-  const dropPatterns = [
-    /^[-]{2,}\s*$/,
-    // separators like -------
-    /^OpenAI Codex v/i,
-    /^workdir:/i,
-    /^model:/i,
-    /^provider:/i,
-    /^approval:/i,
-    /^sandbox:/i,
-    /^reasoning( summaries)?:/i,
-    /^tokens used:/i,
-    /^Instructions:/i,
-    /^User instructions:/i,
-    /^User request:/i,
-    /^Planned (fetch|GitHub fetch)/i,
-    /^Fetch I.?d run:/i,
-    /^Command I.?d run:/i,
-    /^You can also run:/i,
-    /gh\s+issue\s+view\s+\d+/i,
-    /^exec\b/i,
-    /^bash -lc/i,
-    /^codex$/i,
-    /^thinking$/i,
-    /^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[^\]]+\]/
-    // timestamped brackets
-  ];
-  const lines = text.split(/\r?\n/);
-  const kept = [];
-  for (const line of lines) {
-    const trimmed = line.trimEnd();
-    if (dropPatterns.some((re) => re.test(trimmed))) continue;
-    kept.push(trimmed);
-  }
-  text = kept.join("\n");
+  text = text.replace(new RegExp(`@${escapeReg(agentOwner)}\\b`, "ig"), agentOwner);
   text = text.replace(/\bGH(?:_[A-Z]+)?_OK\b/g, "");
-  text = text.replace(/\n{3,}/g, "\n\n").trim();
-  const commaCount = (text.match(/,/g) || []).length;
-  const newlineCount = (text.match(/\n/g) || []).length;
-  const hasBullets = /^\s*[-*]\s+/m.test(text) || /\|/.test(text);
-  if (!hasBullets && newlineCount <= 2 && commaCount >= 8) {
-    const items = text.split(",").map((s) => s.trim()).filter(Boolean);
-    const seen = /* @__PURE__ */ new Set();
-    const bullets = items.filter((s) => {
-      const k = s.toLowerCase();
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
-    if (bullets.length > 0) {
-      text = bullets.map((s) => `- ${s}`).join("\n");
-    }
-  }
-  const markers = ["assistant:", "Assistant:"];
-  let cut = -1;
-  for (const m of markers) {
-    const idx = text.lastIndexOf(m);
-    cut = Math.max(cut, idx);
-  }
-  if (cut !== -1) {
-    text = text.slice(cut + "assistant:".length).trim();
-  }
-  text = text.replace(new RegExp(`@${escapeReg(agentOwner)}\\b`, "ig"), agentOwner).trim();
-  if (text.length > 600) text = text.slice(-600).trimStart();
   return text.trim();
 }
 function escapeReg(s) {
