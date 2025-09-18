@@ -68,7 +68,11 @@ async function mainFromActionsEnv() {
     }
     if (process.env.DEBUG_EVENT === "1") {
       console.log("[debug] workflow_dispatch inputs:", JSON.stringify(inputs));
-      try { console.log("[debug] decoded eventPayload:", JSON.stringify(payload)); } catch { console.log("[debug] decoded eventPayload: <non-json>"); }
+      try {
+        console.log("[debug] decoded eventPayload:", JSON.stringify(payload));
+      } catch {
+        console.log("[debug] decoded eventPayload: <non-json>");
+      }
     }
 
     type LogReturn = { logMessage: { diff: string; type: string }; metadata: Record<string, unknown> };

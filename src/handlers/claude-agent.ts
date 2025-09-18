@@ -1,4 +1,4 @@
-import { spawn, execSync } from "child_process";
+import { spawn, execFileSync, spawnSync } from "child_process";
 import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { Context } from "../types";
@@ -38,7 +38,7 @@ export async function claudeAgent(context: Context): Promise<void> {
     repository: `${owner}/${repo}`,
     issueNumber: String(issueNumber),
     author: sender || "unknown",
-    command
+    command,
   };
 
   try {
@@ -105,12 +105,12 @@ function buildPrompt(isReadOnly: boolean, context: EventContext): string {
     : "You have full access to perform operations.";
 
   const contextDescription = Object.entries(context)
-    .filter(([key]) => key !== 'command')
+    .filter(([key]) => key !== "command")
     .map(([key, value]) => {
-      const formattedKey = key.replace(/([A-Z])/g, ' $1').toLowerCase();
+      const formattedKey = key.replace(/([A-Z])/g, " $1").toLowerCase();
       return `- ${formattedKey}: ${value}`;
     })
-    .join('\n');
+    .join("\n");
 
   return `You are an assistant responding to a request.
 ${accessDescription}
@@ -120,7 +120,7 @@ ${contextDescription}
 
 Request: ${context.command}
 
-${!isReadOnly ? 'The repository is already cloned and you\'re in the correct directory. You can use git and gh CLI commands which are already authenticated.' : 'If asked to perform write operations, explain that you only have read access.'}`;
+${!isReadOnly ? "The repository is already cloned and you're in the correct directory. You can use git and gh CLI commands which are already authenticated." : "If asked to perform write operations, explain that you only have read access."}`;
 }
 
 async function executeClaudeCommand(
@@ -181,9 +181,8 @@ async function executeClaudeCommandInternal(
       const claudePath = process.env.CI ? "claude" : `${process.env.HOME || "/home/runner"}/.local/bin/claude`;
 
       try {
-        // eslint-disable-next-line sonarjs/os-command
-        const claudeVersion = execSync(`${claudePath} --version`, { encoding: "utf8" });
-        logger.info("Claude CLI version: " + claudeVersion.trim());
+        const versionOut = execFileSync(claudePath, ["--version"], { encoding: "utf8" });
+        logger.info("Claude CLI version: " + String(versionOut || "").trim());
       } catch (e) {
         logger.info("Failed to get Claude version: " + String(e));
       }
@@ -243,9 +242,7 @@ async function executeClaudeCommandInternal(
           logger.info(`Error output: ${errorOutput}`);
           reject(new Error(`Claude CLI produced no output. Error: ${errorOutput}`));
         } else {
-          // eslint-disable-next-line no-control-regex, sonarjs/no-control-regex
-          const cleanOutput = output
-            .replace(/\x1b\[[0-9;]*m/g, "")
+          const cleanOutput = stripAnsi(output)
             .replace(/^\s*Claude\s+Code\s+v[\d.]+\s*/gm, "")
             .replace(/^\s*Human:\s*/gm, "")
             .replace(/^\s*Assistant:\s*/gm, "")
@@ -266,7 +263,6 @@ async function executeClaudeCommandInternal(
     });
   } finally {
     try {
-      // eslint-disable-next-line sonarjs/os-command
       await unlink(promptPath);
     } catch {
       // Ignore cleanup errors
@@ -276,19 +272,55 @@ async function executeClaudeCommandInternal(
 
 async function configureGitHubAuth(token: string, logger: { info: (msg: string) => void; verbose: (msg: string) => void }): Promise<void> {
   try {
-    // eslint-disable-next-line sonarjs/no-os-command-from-path
-    execSync(`echo "${token}" | gh auth login --with-token`, {
-      stdio: "ignore",
+    // Login by piping the token to gh via stdin using spawnSync (no shell)
+    const ghPath = process.env.GH_PATH || "/usr/local/bin/gh";
+    const login = spawnSync(ghPath, ["auth", "login", "--with-token"], {
+      input: `${token}\n`,
       env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
+      stdio: ["pipe", "ignore", "ignore"],
     });
+    if (login.status !== 0) {
+      throw new Error("gh auth login failed");
+    }
 
-    const authStatus = execSync("gh auth status", {
-      encoding: "utf8",
+    const status = spawnSync(ghPath, ["auth", "status"], {
       env: { ...process.env, GITHUB_TOKEN: token, GH_TOKEN: token },
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
     });
+    const authStatus = status.stdout || "";
     logger.verbose(`GitHub CLI auth status: ${authStatus}`);
     logger.info("GitHub CLI authenticated successfully with user PAT");
   } catch (error) {
     logger.info(`Failed to configure GitHub CLI authentication: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+function stripAnsi(text: string): string {
+  // Remove ANSI SGR escape sequences without control-char regex literals
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const ch = text.charCodeAt(i);
+    if (ch === 0x1b && text[i + 1] === "[") {
+      i = skipAnsiAt(text, i);
+      continue;
+    }
+    out += text[i];
+    i++;
+  }
+  return out;
+}
+
+function skipAnsiAt(s: string, start: number): number {
+  // start points at ESC; skip until we pass the final 'm' or reach end
+  let i = start + 2; // skip ESC and '['
+  for (; i < s.length; i++) {
+    const c = s[i];
+    if ((c >= "0" && c <= "9") || c === ";") continue;
+    if (c === "m") return i + 1; // include 'm'
+    // unknown terminator; stop here
+    return i + 1;
+  }
+  return i;
 }

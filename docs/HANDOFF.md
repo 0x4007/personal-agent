@@ -10,6 +10,7 @@ This document hands off the current state, goals, and quick commands to continue
 - Codex rich prompts on the Pi can timeout (`code=143`). Minimal prompts or direct `raw_comment` posting are reliable. We are keeping full prompts by default (no `PI_MINIMAL`) and will hand‑tune them once the system is stable.
 
 Logging toggles for production debugging:
+
 - `DEBUG_EVENT=1` → log workflow_dispatch inputs and decoded eventPayload in compute logs.
 - `DEBUG_EVENT_RAW=1` → log raw JSON from `GITHUB_EVENT_PATH`.
 - `LOG_PROMPT=1` → log the full constructed prompt (length + content).
@@ -77,9 +78,9 @@ Logging toggles for production debugging:
 
 ## Triggering CI / Kernel Dispatch
 
-1) Post a comment starting with `@0x4007` on `https://github.com/ubiquity/.github-private/issues/23`.
-2) Monitor compute workflow: `gh run list -R 0x4007/personal-agent --workflow "Personal Agent Compute"`.
-3) Logs: `gh run view <id> -R 0x4007/personal-agent --log`.
+1. Post a comment starting with `@0x4007` on `https://github.com/ubiquity/.github-private/issues/23`.
+2. Monitor compute workflow: `gh run list -R 0x4007/personal-agent --workflow "Personal Agent Compute"`.
+3. Logs: `gh run view <id> -R 0x4007/personal-agent --log`.
 
 ## Current Debug Focus (Issue #24, Kernel Dispatch)
 
@@ -87,12 +88,13 @@ Logging toggles for production debugging:
 - Validation: Manually dispatched the same event payload and it worked (posted a short reply to #24 at 20:41Z). Artifacts confirm dynamic `issue: 24` in the Pi request.
 - Likely cause: Kernel gating requires the comment to start with your exact username mention at the first character (e.g., `@0x4007 ...`). Ensure the Kernel is configured to watch the repository for `issue_comment.created` events on all issues, not a single thread.
 - How to manually reproduce:
-  1) Grab the comment JSON: `gh api /repos/ubiquity/.github-private/issues/comments/<id>`
-  2) Construct `eventPayload` with `{ comment, issue: {number}, repository: {name, owner} }`.
-  3) Dispatch: `gh workflow run "Personal Agent Compute" -R 0x4007/personal-agent -f stateId=manual-... -f eventName=issue_comment.created -f eventPayload="$JSON" -f testMode=true`.
-  4) Inspect artifacts to confirm `pi-request-<run_id>.json` contains the correct `issue` number.
+  1. Grab the comment JSON: `gh api /repos/ubiquity/.github-private/issues/comments/<id>`
+  2. Construct `eventPayload` with `{ comment, issue: {number}, repository: {name, owner} }`.
+  3. Dispatch: `gh workflow run "Personal Agent Compute" -R 0x4007/personal-agent -f stateId=manual-... -f eventName=issue_comment.created -f eventPayload="$JSON" -f testMode=true`.
+  4. Inspect artifacts to confirm `pi-request-<run_id>.json` contains the correct `issue` number.
 
 What to check next
+
 - Kernel config: verify it listens for `issue_comment.created`, and that the mention is exactly at the beginning of the comment body.
 - If a run appears but no reply posts: confirm owner vs non-owner path (see "Posting & Access Control"), and check token availability.
 
@@ -134,8 +136,9 @@ What to check next
 ## Universal GitHub Reply Prompt (live)
 
 We use a single rich prompt tuned for GitHub comments. Key properties:
+
 - Output only the final comment (no wrappers/logs).
-- No @mentions (prevents loops); no test markers (e.g., GH_*_OK).
+- No @mentions (prevents loops); no test markers (e.g., GH\_\*\_OK).
 - Strong GitHub‑flavored Markdown guidance:
   - One bullet per item for enumerations. Don’t compress lists into a single bullet with hyphens/commas.
   - For 12+ similar items, a compact table is allowed if it improves readability.
@@ -168,7 +171,6 @@ Where it lives: `src/handlers/codex-agent.ts` in the `richPrompt` builder. Enabl
   - Hardcoded local path: `/Users/nv/repos/pi-agent`, remote: `origin`, Pi: `pi@pi.local`.
   - After the push completes (detected via `git ls-remote`), the hook pulls the same branch on the Pi and restarts `pi-agent-deno.service` (best-effort).
   - Non-blocking; disable temporarily with `DISABLE_PI_AGENT_SYNC=1 git push`.
-
 
 ## Where to review the full prompt and inputs
 

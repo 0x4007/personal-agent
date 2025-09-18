@@ -41,12 +41,14 @@ Actions can directly invoke `node dist/index.js` without installing dependencies
 or building.
 
 Local development
+
 - Use Bun to run TypeScript directly; no local bundling.
 - Examples:
   - `npm run dev:local` → `bun scripts/local-run.ts` (stubbed Pi by default)
   - `npm run dev:pi` → `REAL_PI=1 bun scripts/local-run.ts` (talks to the Pi)
 
 Notes:
+
 - Do not commit any artifacts other than `dist/index.js` and `dist/index.js.map`.
 
 ## Tooling (debugging and Pi integration)
@@ -159,6 +161,7 @@ Notes:
 - `PROMPT_FETCH_LABELS=1` → prefetch repository labels and embed into prompt (default on). Also enables a fast path.
 
 ## Deterministic Fast Paths (skip Pi/Codex)
+
 Do NOT add any special‑case fast paths. This project must remain a generalized system. All requests flow through the same Codex path (with optional prefetched context like the issue/PR + comments). If you need better accuracy, improve the prompt or context — do not branch behavior based on the command.
 
 ## Prompt Guidance for “Hello world” verification

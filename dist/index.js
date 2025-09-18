@@ -1,11 +1,11 @@
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __esm = (fn, res) => function __init() {
-  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-};
+var __esm = (fn, res) =>
+  function __init() {
+    return (fn && (res = (0, fn[__getOwnPropNames(fn)[0]])((fn = 0))), res);
+  };
 var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
+  for (var name in all) __defProp(target, name, { get: all[name], enumerable: true });
 };
 
 // node_modules/tsup/assets/esm_shims.js
@@ -14,13 +14,13 @@ import { fileURLToPath } from "url";
 var init_esm_shims = __esm({
   "node_modules/tsup/assets/esm_shims.js"() {
     "use strict";
-  }
+  },
 });
 
 // src/handlers/codex-agent.ts
 var codex_agent_exports = {};
 __export(codex_agent_exports, {
-  codexAgent: () => codexAgent
+  codexAgent: () => codexAgent,
 });
 import fs from "fs";
 import path2 from "path";
@@ -104,7 +104,7 @@ async function codexAgent(context) {
   const minimal = process.env.PI_MINIMAL === "1";
   const includeEventJson = process.env.PROMPT_INCLUDE_EVENT === "1" || process.env.INCLUDE_GH_EVENT === "1";
   const stripUrls = (process.env.PROMPT_STRIP_URLS ?? "1") === "1";
-  const eventForPrompt = includeEventJson ? stripUrls ? stripUrlFields(payload) : payload : void 0;
+  const eventForPrompt = includeEventJson ? (stripUrls ? stripUrlFields(payload) : payload) : void 0;
   const eventJson = includeEventJson ? safeStringify(eventForPrompt) : "";
   const contextJson = fetchedContext ? safeStringify(stripUrlFields(fetchedContext)) : "";
   const basePrompt = minimal ? minimalPrompt : richPrompt;
@@ -134,8 +134,7 @@ ${wrapJson(contextJson)}`;
 Repository labels (prefetched):
 
 ${wrapJson(labelsJson)}`;
-    } catch {
-    }
+    } catch {}
   }
   if (includeEventJson) {
     prompt += `
@@ -160,23 +159,24 @@ ${wrapJson(eventJson)}`;
       const ctxLen = contextJson.length;
       logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt, eventRawLen: rawLen, eventSanitizedLen: sanLen, contextLen: ctxLen });
     }
-    const body2 = minimal ? { prompt, timeout_ms: timeoutMs, post: false, mention: mentionOverride } : {
-      prompt,
-      timeout_ms: timeoutMs,
-      repo: `${owner}/${repo}`,
-      ...isPR ? { pr: issueNumber } : { issue: issueNumber },
-      post: false,
-      // Explicitly request no mention unless overridden via PI_MENTION
-      mention: mentionOverride
-    };
+    const body2 = minimal
+      ? { prompt, timeout_ms: timeoutMs, post: false, mention: mentionOverride }
+      : {
+          prompt,
+          timeout_ms: timeoutMs,
+          repo: `${owner}/${repo}`,
+          ...(isPR ? { pr: issueNumber } : { issue: issueNumber }),
+          post: false,
+          // Explicitly request no mention unless overridden via PI_MENTION
+          mention: mentionOverride,
+        };
     if (process.env.LOG_PI_BODY === "1") {
       logger.info("[codexAgent] Pi request body", { body: body2 });
     }
     if (process.env.WRITE_PROMPT_FILE === "1") {
       try {
         writeRuntimeLogs({ prompt, body: body2, payload, sanitized: eventForPrompt });
-      } catch (e) {
-      }
+      } catch (e) {}
     }
     const runId = process.env.GITHUB_RUN_ID || "";
     const runRepo = process.env.GITHUB_REPOSITORY || "";
@@ -199,19 +199,23 @@ ${wrapJson(eventJson)}`;
         if (t) clearTimeout(t);
       }
     }
-    const resp = await fetchWithTimeoutRetry(`${piBaseUrl}/api/codex`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-run-id": runId,
-        "x-run-repo": runRepo,
-        "x-run-attempt": runAttempt,
-        "x-agent-owner": String(agentOwner || "")
+    const resp = await fetchWithTimeoutRetry(
+      `${piBaseUrl}/api/codex`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-run-id": runId,
+          "x-run-repo": runRepo,
+          "x-run-attempt": runAttempt,
+          "x-agent-owner": String(agentOwner || ""),
+        },
+        body: JSON.stringify(body2),
+        // Give the HTTP call slightly more than Codex time to return the JSON
+        timeout: Math.max(1e3, Math.min(timeoutMs + 3e4, 18e5)),
       },
-      body: JSON.stringify(body2),
-      // Give the HTTP call slightly more than Codex time to return the JSON
-      timeout: Math.max(1e3, Math.min(timeoutMs + 3e4, 18e5))
-    }, 1);
+      1
+    );
     if (!resp.ok) {
       const txt = await safeText(resp);
       throw new Error(`Pi /api/codex HTTP ${resp.status}: ${txt}`);
@@ -228,13 +232,16 @@ ${wrapJson(eventJson)}`;
         return;
       }
       const token = selectPatToken({ isSelf });
-      await postGithubComment({
-        owner,
-        repo,
-        issueNumber,
-        body: clean,
-        token
-      }, logger);
+      await postGithubComment(
+        {
+          owner,
+          repo,
+          issueNumber,
+          body: clean,
+          token,
+        },
+        logger
+      );
       logger.ok("Posted cleaned Codex response via GitHub API", { length: clean.length });
     } else {
       logger.ok("Read-only mode: not posting comment.");
@@ -276,12 +283,12 @@ async function postGithubComment(params, logger) {
   const resp = await fetch(url, {
     method: "POST",
     headers: {
-      "authorization": `Bearer ${token}`,
-      "accept": "application/vnd.github+json",
+      authorization: `Bearer ${token}`,
+      accept: "application/vnd.github+json",
       "content-type": "application/json",
-      "x-github-api-version": "2022-11-28"
+      "x-github-api-version": "2022-11-28",
     },
-    body: JSON.stringify({ body })
+    body: JSON.stringify({ body }),
   });
   if (!resp.ok) {
     const txt = await safeText(resp);
@@ -305,8 +312,7 @@ function writeRuntimeLogs(params) {
       if (params.sanitized !== void 0) {
         fs.writeFileSync(payloadSanitizedPath, JSON.stringify(params.sanitized, null, 2), "utf8");
       }
-    } catch {
-    }
+    } catch {}
   }
 }
 function parseMentionEnv(val) {
@@ -328,9 +334,9 @@ async function fetchIssueContext(params) {
   if (!token) throw new Error("Missing token for GitHub context fetch");
   const base = `https://api.github.com/repos/${owner}/${repo}`;
   const headers = {
-    "authorization": `Bearer ${token}`,
-    "accept": "application/vnd.github+json",
-    "x-github-api-version": "2022-11-28"
+    authorization: `Bearer ${token}`,
+    accept: "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28",
   };
   async function getJson(url) {
     const r = await fetch(url, { headers });
@@ -343,30 +349,40 @@ async function fetchIssueContext(params) {
   if (isPR) {
     try {
       pr = await getJson(`${base}/pulls/${issueNumber}`);
-    } catch {
-    }
+    } catch {}
   }
   const slimIssue = {
     number: issue.number,
     title: issue.title,
     state: issue.state,
     author: issue.user?.login,
-    labels: Array.isArray(issue.labels) ? issue.labels.map((l) => typeof l === "string" ? l : l?.name).filter(Boolean) : [],
+    labels: Array.isArray(issue.labels) ? issue.labels.map((l) => (typeof l === "string" ? l : l?.name)).filter(Boolean) : [],
     body: issue.body,
     created_at: issue.created_at,
     updated_at: issue.updated_at,
-    url: issue.url
+    url: issue.url,
   };
   const slimComments = Array.isArray(comments) ? comments.map((c) => ({ author: c.user?.login, created_at: c.created_at, body: c.body, url: c.url })) : [];
-  const slimPr = pr ? { merged: !!pr.merged_at, draft: !!pr.draft, head: pr.head?.ref, base: pr.base?.ref, additions: pr.additions, deletions: pr.deletions, changed_files: pr.changed_files, url: pr.url } : null;
+  const slimPr = pr
+    ? {
+        merged: !!pr.merged_at,
+        draft: !!pr.draft,
+        head: pr.head?.ref,
+        base: pr.base?.ref,
+        additions: pr.additions,
+        deletions: pr.deletions,
+        changed_files: pr.changed_files,
+        url: pr.url,
+      }
+    : null;
   return { issue: slimIssue, comments: slimComments, pr: slimPr };
 }
 async function fetchRepoLabels(params) {
   const { owner, repo, token } = params;
   const headers = {
-    "authorization": `Bearer ${token}`,
-    "accept": "application/vnd.github+json",
-    "x-github-api-version": "2022-11-28"
+    authorization: `Bearer ${token}`,
+    accept: "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28",
   };
   const base = `https://api.github.com/repos/${owner}/${repo}/labels`;
   const out = [];
@@ -381,12 +397,14 @@ async function fetchRepoLabels(params) {
     page++;
   }
   const seen = /* @__PURE__ */ new Set();
-  return out.filter((l) => {
-    const key = l.name.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).sort((a, b) => a.name.localeCompare(b.name, void 0, { sensitivity: "base" }));
+  return out
+    .filter((l) => {
+      const key = l.name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, void 0, { sensitivity: "base" }));
 }
 function stripUrlFields(value) {
   const redundantUrlKey = /_url$/i;
@@ -407,7 +425,7 @@ var init_codex_agent = __esm({
   "src/handlers/codex-agent.ts"() {
     "use strict";
     init_esm_shims();
-  }
+  },
 });
 
 // src/index.ts
@@ -425,14 +443,17 @@ import { brotliDecompressSync } from "zlib";
 var cachedCodexAgent;
 async function loadCodexAgent() {
   if (!cachedCodexAgent) {
-    cachedCodexAgent = Promise.resolve().then(() => (init_codex_agent(), codex_agent_exports)).then((mod) => mod.codexAgent).catch(async (error) => {
-      if (!isModuleNotFound(error) || !import.meta.url.endsWith(".ts")) {
-        throw error;
-      }
-      const fallbackUrl = new URL("./handlers/codex-agent.ts", import.meta.url);
-      const fallbackModule = await import(fallbackUrl.href);
-      return fallbackModule.codexAgent;
-    });
+    cachedCodexAgent = Promise.resolve()
+      .then(() => (init_codex_agent(), codex_agent_exports))
+      .then((mod) => mod.codexAgent)
+      .catch(async (error) => {
+        if (!isModuleNotFound(error) || !import.meta.url.endsWith(".ts")) {
+          throw error;
+        }
+        const fallbackUrl = new URL("./handlers/codex-agent.ts", import.meta.url);
+        const fallbackModule = await import(fallbackUrl.href);
+        return fallbackModule.codexAgent;
+      });
   }
   return cachedCodexAgent;
 }
@@ -475,23 +496,23 @@ async function mainFromActionsEnv() {
         console.log("[ok]", msg, meta || "");
         return {
           logMessage: { diff: String(msg), type: "info" },
-          metadata: { message: String(msg), ...meta || {} }
+          metadata: { message: String(msg), ...(meta || {}) },
         };
       },
       error: (msg, meta) => {
         console.error("[error]", msg, meta || "");
         return {
           logMessage: { diff: String(msg), type: "fatal" },
-          metadata: { message: String(msg), ...meta || {} }
+          metadata: { message: String(msg), ...(meta || {}) },
         };
-      }
+      },
     };
     const context = {
       eventName,
       payload,
       env: process.env,
       logger,
-      commentHandler: { postComment: async () => null }
+      commentHandler: { postComment: async () => null },
     };
     await runPlugin(context);
   } catch (e) {
@@ -521,7 +542,5 @@ mainFromActionsEnv().catch((e) => {
   console.error(e);
   process.exit(1);
 });
-export {
-  runPlugin
-};
+export { runPlugin };
 //# sourceMappingURL=index.js.map

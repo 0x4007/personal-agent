@@ -1,6 +1,7 @@
 # Personal Agent — Testing & Debugging Guide
 
 This guide gives another LLM (or human) everything needed to:
+
 - Trigger the agent via a GitHub comment
 - Observe CI runs and download runtime artifacts
 - Inspect the exact prompt/body sent to the Pi
@@ -21,6 +22,7 @@ Tip: We prefer starting clean sessions by creating a fresh issue, then commentin
 ## Monitor The Run
 
 Using the GitHub CLI (gh):
+
 - List recent runs:
   - `gh run list -R 0x4007/personal-agent --workflow "Personal Agent Compute"`
 - Watch a run by ID until completion:
@@ -31,9 +33,11 @@ Using the GitHub CLI (gh):
 ## Runtime Artifacts (Logs You Want)
 
 Each compute run uploads an artifact named `runtime-logs-<run_id>`. Download it with:
+
 - `gh run download <run_id> -R 0x4007/personal-agent -n runtime-logs-<run_id> -D /tmp/pa_logs_<run_id>`
 
 It contains:
+
 - `prompt-<run_id>.txt` — The full prompt string (what we sent to Codex on the Pi)
 - `pi-request-<run_id>.json` — The exact JSON body sent to Pi `/api/codex` (includes `timeout_ms`, repo/issue, `post:false`, `mention:false`)
 - `event-<run_id>.json` — The decoded GitHub event payload received by compute
@@ -79,6 +83,7 @@ These env vars are read by the code. Keep compute.yml minimal; prefer a separate
   - `DEBUG_EVENT_RAW=1` — print raw `GITHUB_EVENT_PATH` JSON
 
 Pi server settings the agent forwards:
+
 - `PI_URL` — Base URL to the Pi server (e.g., `https://pi.pavlovcik.com`)
 - `PI_TIMEOUT_MS` — Forwarded as `timeout_ms` to Pi; CI sets to 15 minutes
 
@@ -129,4 +134,3 @@ Then monitor the run and download the `runtime-logs-*` artifact as described abo
 ## Non-Goals (Important)
 
 - No special‑case “fast paths.” This system must remain generalized. If quality suffers, improve the prompt, context, or Pi execution environment — do not branch logic by command.
-
