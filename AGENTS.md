@@ -67,20 +67,7 @@ Notes:
   - `npm run pi:probe` → probes `/`, `/api`, `/api/codex` with multiple payloads.
   - `npm run pi:curl` → crafts JSON safely and POSTs via ssh (base64 to avoid quoting issues).
 
-- `scripts/pi-agent-git.sh` → Git-based sync for the Raspberry Pi server repo (pi-agent).
-  - Defaults: repo `https://github.com/0x4007/pi-agent.git`, dir `/home/pi/repos/pi-agent`, branch `main`.
-  - Branch selection: if `BRANCH` is set, it is used. Otherwise, if `PI_AGENT_LOCAL_DIR` points to a local `pi-agent` clone, the current branch from that repo is used. If neither is provided, falls back to `main`.
-  - Commands:
-    - `npm run pi-agent:setup` → clone on Pi if missing, checkout/reset to branch.
-    - `npm run pi-agent:pull` → fetch/reset to `origin/<branch>` if it exists; otherwise stays/creates the local branch.
-    - `npm run pi-agent:restart` → best‑effort restart of `pi-agent-deno.service`.
-
-- Husky pre-push (local-only): `.husky/pre-push`
-  - Hardcoded to the maintainer’s LAN setup:
-    - Local pi-agent path: `/Users/nv/repos/pi-agent`
-    - Remote: `origin`
-    - Pi host: `pi@pi.local`
-  - Behavior: after a push completes (detected via `git ls-remote` seeing the new SHA), it pulls the same branch on the Pi using `scripts/pi-agent-git.sh pull` with `BRANCH=<current>`, then restarts the `pi-agent-deno.service` (best‑effort). Non‑blocking.
+<!-- Pi server operational scripts live in the pi-agent repository. Removed from personal-agent to keep concerns separated. -->
   - To disable temporarily: `DISABLE_PI_AGENT_SYNC=1 git push`.
 
 ## Posting & Access Control
@@ -124,24 +111,7 @@ Notes:
 - Timeout forwarded to Pi: `PI_TIMEOUT_MS=900000` (15 minutes).
 - Test issue default moved to `#23` for a cleaner thread.
 
-- `scripts/pi-agent-git.sh` → Git-based sync for the Raspberry Pi server repo (pi-agent).
-  - Defaults: repo `https://github.com/0x4007/pi-agent.git`, dir `/home/pi/repos/pi-agent`, branch `main`.
-  - Branch selection: if `BRANCH` is set, it is used. Otherwise, if `PI_AGENT_LOCAL_DIR` points to a local `pi-agent` clone, the current branch from that repo is used. If neither is provided, falls back to `main`.
-  - Commands:
-    - `npm run pi-agent:setup` → clone on Pi if missing, checkout/reset to branch.
-    - `npm run pi-agent:pull` → fetch/reset to `origin/<branch>` if it exists; otherwise stays/creates the local branch.
-    - `npm run pi-agent:restart` → best‑effort restart of `pi-agent-deno.service`.
-
-- `scripts/push-pi-agent.sh` → Optional CLI to push local pi-agent then trigger Pi pull (post-push style).
-  - Defaults are fine; no env required on maintainer’s machine.
-  - Rationale: Git has no native post-push hook client-side. The Husky pre-push hook below is preferred.
-
-- Husky pre-push (local only): `.husky/pre-push`
-  - Hardcoded for the maintainer’s LAN setup:
-    - Local pi-agent path: `/Users/nv/repos/pi-agent`
-    - Remote: `origin`
-    - Pi host: `pi@pi.local`
-  - Behavior: after a push completes (detected via `ls-remote` seeing the new SHA), it pulls the same branch on the Pi using `scripts/pi-agent-git.sh pull` with `BRANCH=<current>`, then restarts the `pi-agent-deno.service` (best‑effort).
+<!-- Pi server operational scripts/hook guidance removed; refer to submodules/pi-agent/docs/os-server-setup.md for ops. -->
   - Non-blocking and silent if local path isn’t present. Set `DISABLE_PI_AGENT_SYNC=1` to skip.
 
 ## Pi Server Contract (for reference)
