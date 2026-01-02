@@ -42,10 +42,6 @@ You can override behavior with env vars (see `src/types/env.ts`).
   ```
   bun install
   ```
-- Run tests:
-  ```
-  bun run test
-  ```
 
 ## Notes
 
