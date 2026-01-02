@@ -198,7 +198,7 @@ var init_before_after_hook = __esm({
   }
 });
 
-// node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-bundle/index.js
+// node_modules/@octokit/core/node_modules/@octokit/endpoint/dist-bundle/index.js
 function lowercaseKeys(object) {
   if (!object) {
     return {};
@@ -497,7 +497,7 @@ function withDefaults(oldDefaults, newDefaults) {
 }
 var VERSION, userAgent, DEFAULTS, urlVariableRegex, endpoint;
 var init_dist_bundle = __esm({
-  "node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-bundle/index.js"() {
+  "node_modules/@octokit/core/node_modules/@octokit/endpoint/dist-bundle/index.js"() {
     "use strict";
     init_esm_shims();
     init_universal_user_agent();
@@ -851,7 +851,7 @@ var init_dist_bundle2 = __esm({
   }
 });
 
-// node_modules/@octokit/graphql/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-bundle/index.js
+// node_modules/@octokit/graphql/node_modules/@octokit/endpoint/dist-bundle/index.js
 function lowercaseKeys2(object) {
   if (!object) {
     return {};
@@ -1150,7 +1150,7 @@ function withDefaults3(oldDefaults, newDefaults) {
 }
 var VERSION3, userAgent2, DEFAULTS2, urlVariableRegex2, endpoint2;
 var init_dist_bundle3 = __esm({
-  "node_modules/@octokit/graphql/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-bundle/index.js"() {
+  "node_modules/@octokit/graphql/node_modules/@octokit/endpoint/dist-bundle/index.js"() {
     "use strict";
     init_esm_shims();
     init_universal_user_agent();
@@ -1172,10 +1172,10 @@ var init_dist_bundle3 = __esm({
   }
 });
 
-// node_modules/@octokit/graphql/node_modules/@octokit/request/node_modules/@octokit/request-error/dist-src/index.js
+// node_modules/@octokit/graphql/node_modules/@octokit/request-error/dist-src/index.js
 var RequestError2;
 var init_dist_src2 = __esm({
-  "node_modules/@octokit/graphql/node_modules/@octokit/request/node_modules/@octokit/request-error/dist-src/index.js"() {
+  "node_modules/@octokit/graphql/node_modules/@octokit/request-error/dist-src/index.js"() {
     "use strict";
     init_esm_shims();
     RequestError2 = class extends Error {
@@ -15058,6 +15058,14 @@ var require_pool = __commonJS({
         this[kOptions] = { ...util.deepClone(options), connect, allowH2 };
         this[kOptions].interceptors = options.interceptors ? { ...options.interceptors } : void 0;
         this[kFactory] = factory;
+        this.on("connectionError", (origin2, targets, error) => {
+          for (const target of targets) {
+            const idx = this[kClients].indexOf(target);
+            if (idx !== -1) {
+              this[kClients].splice(idx, 1);
+            }
+          }
+        });
       }
       [kGetDispatcher]() {
         let dispatcher = this[kClients].find((dispatcher2) => !dispatcher2[kNeedDrain]);
@@ -17757,6 +17765,7 @@ var require_headers = __commonJS({
       isValidHeaderName,
       isValidHeaderValue
     } = require_util2();
+    var util = __require("util");
     var { webidl } = require_webidl();
     var assert = __require("assert");
     var kHeadersMap = Symbol("headers map");
@@ -18108,6 +18117,9 @@ var require_headers = __commonJS({
       [Symbol.toStringTag]: {
         value: "Headers",
         configurable: true
+      },
+      [util.inspect.custom]: {
+        enumerable: false
       }
     });
     webidl.converters.HeadersInit = function(V) {
@@ -21711,8 +21723,6 @@ var require_util6 = __commonJS({
   "node_modules/undici/lib/cookies/util.js"(exports, module) {
     "use strict";
     init_esm_shims();
-    var assert = __require("assert");
-    var { kHeadersList } = require_symbols();
     function isCTLExcludingHtab(value) {
       if (value.length === 0) {
         return false;
@@ -21843,25 +21853,13 @@ var require_util6 = __commonJS({
       }
       return out.join("; ");
     }
-    var kHeadersListNode;
-    function getHeadersList(headers) {
-      if (headers[kHeadersList]) {
-        return headers[kHeadersList];
-      }
-      if (!kHeadersListNode) {
-        kHeadersListNode = Object.getOwnPropertySymbols(headers).find(
-          (symbol) => symbol.description === "headers list"
-        );
-        assert(kHeadersListNode, "Headers cannot be parsed");
-      }
-      const headersList = headers[kHeadersListNode];
-      assert(headersList);
-      return headersList;
-    }
     module.exports = {
       isCTLExcludingHtab,
-      stringify,
-      getHeadersList
+      validateCookieName,
+      validateCookiePath,
+      validateCookieValue,
+      toIMFDate,
+      stringify
     };
   }
 });
@@ -22013,7 +22011,7 @@ var require_cookies = __commonJS({
     "use strict";
     init_esm_shims();
     var { parseSetCookie } = require_parse();
-    var { stringify, getHeadersList } = require_util6();
+    var { stringify } = require_util6();
     var { webidl } = require_webidl();
     var { Headers: Headers2 } = require_headers();
     function getCookies(headers) {
@@ -22045,11 +22043,11 @@ var require_cookies = __commonJS({
     function getSetCookies(headers) {
       webidl.argumentLengthCheck(arguments, 1, { header: "getSetCookies" });
       webidl.brandCheck(headers, Headers2, { strict: false });
-      const cookies = getHeadersList(headers).cookies;
+      const cookies = headers.getSetCookie();
       if (!cookies) {
         return [];
       }
-      return cookies.map((pair) => parseSetCookie(Array.isArray(pair) ? pair[1] : pair));
+      return cookies.map((pair) => parseSetCookie(pair));
     }
     function setCookie(headers, cookie) {
       webidl.argumentLengthCheck(arguments, 2, { header: "setCookie" });
@@ -26216,7 +26214,7 @@ var require_utils3 = __commonJS({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/universal-user-agent/dist-web/index.js
+// node_modules/@actions/github/node_modules/universal-user-agent/dist-web/index.js
 function getUserAgent2() {
   if (typeof navigator === "object" && "userAgent" in navigator) {
     return navigator.userAgent;
@@ -26227,15 +26225,15 @@ function getUserAgent2() {
   return "<environment undetectable>";
 }
 var init_dist_web = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/universal-user-agent/dist-web/index.js"() {
+  "node_modules/@actions/github/node_modules/universal-user-agent/dist-web/index.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/lib/register.js
+// node_modules/@actions/github/node_modules/before-after-hook/lib/register.js
 var require_register = __commonJS({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/lib/register.js"(exports, module) {
+  "node_modules/@actions/github/node_modules/before-after-hook/lib/register.js"(exports, module) {
     "use strict";
     init_esm_shims();
     module.exports = register2;
@@ -26263,9 +26261,9 @@ var require_register = __commonJS({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/lib/add.js
+// node_modules/@actions/github/node_modules/before-after-hook/lib/add.js
 var require_add = __commonJS({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/lib/add.js"(exports, module) {
+  "node_modules/@actions/github/node_modules/before-after-hook/lib/add.js"(exports, module) {
     "use strict";
     init_esm_shims();
     module.exports = addHook2;
@@ -26305,9 +26303,9 @@ var require_add = __commonJS({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/lib/remove.js
+// node_modules/@actions/github/node_modules/before-after-hook/lib/remove.js
 var require_remove = __commonJS({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/lib/remove.js"(exports, module) {
+  "node_modules/@actions/github/node_modules/before-after-hook/lib/remove.js"(exports, module) {
     "use strict";
     init_esm_shims();
     module.exports = removeHook2;
@@ -26326,9 +26324,9 @@ var require_remove = __commonJS({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/index.js
+// node_modules/@actions/github/node_modules/before-after-hook/index.js
 var require_before_after_hook = __commonJS({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/index.js"(exports, module) {
+  "node_modules/@actions/github/node_modules/before-after-hook/index.js"(exports, module) {
     "use strict";
     init_esm_shims();
     var register2 = require_register();
@@ -26384,25 +26382,42 @@ var require_before_after_hook = __commonJS({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/version.js
-var VERSION11;
-var init_version3 = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/version.js"() {
+// node_modules/@octokit/endpoint/node_modules/universal-user-agent/dist-web/index.js
+function getUserAgent3() {
+  if (typeof navigator === "object" && "userAgent" in navigator) {
+    return navigator.userAgent;
+  }
+  if (typeof process === "object" && process.version !== void 0) {
+    return `Node.js/${process.version.substr(1)} (${process.platform}; ${process.arch})`;
+  }
+  return "<environment undetectable>";
+}
+var init_dist_web2 = __esm({
+  "node_modules/@octokit/endpoint/node_modules/universal-user-agent/dist-web/index.js"() {
     "use strict";
     init_esm_shims();
-    VERSION11 = "9.0.5";
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/defaults.js
-var userAgent3, DEFAULTS3;
-var init_defaults = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/defaults.js"() {
+// node_modules/@octokit/endpoint/dist-src/version.js
+var VERSION11;
+var init_version3 = __esm({
+  "node_modules/@octokit/endpoint/dist-src/version.js"() {
     "use strict";
     init_esm_shims();
-    init_dist_web();
+    VERSION11 = "9.0.6";
+  }
+});
+
+// node_modules/@octokit/endpoint/dist-src/defaults.js
+var userAgent3, DEFAULTS3;
+var init_defaults = __esm({
+  "node_modules/@octokit/endpoint/dist-src/defaults.js"() {
+    "use strict";
+    init_esm_shims();
+    init_dist_web2();
     init_version3();
-    userAgent3 = `octokit-endpoint.js/${VERSION11} ${getUserAgent2()}`;
+    userAgent3 = `octokit-endpoint.js/${VERSION11} ${getUserAgent3()}`;
     DEFAULTS3 = {
       method: "GET",
       baseUrl: "https://api.github.com",
@@ -26417,7 +26432,7 @@ var init_defaults = __esm({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/lowercase-keys.js
+// node_modules/@octokit/endpoint/dist-src/util/lowercase-keys.js
 function lowercaseKeys3(object) {
   if (!object) {
     return {};
@@ -26428,13 +26443,13 @@ function lowercaseKeys3(object) {
   }, {});
 }
 var init_lowercase_keys = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/lowercase-keys.js"() {
+  "node_modules/@octokit/endpoint/dist-src/util/lowercase-keys.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/is-plain-object.js
+// node_modules/@octokit/endpoint/dist-src/util/is-plain-object.js
 function isPlainObject5(value) {
   if (typeof value !== "object" || value === null)
     return false;
@@ -26447,13 +26462,13 @@ function isPlainObject5(value) {
   return typeof Ctor === "function" && Ctor instanceof Ctor && Function.prototype.call(Ctor) === Function.prototype.call(value);
 }
 var init_is_plain_object = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/is-plain-object.js"() {
+  "node_modules/@octokit/endpoint/dist-src/util/is-plain-object.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/merge-deep.js
+// node_modules/@octokit/endpoint/dist-src/util/merge-deep.js
 function mergeDeep3(defaults, options) {
   const result = Object.assign({}, defaults);
   Object.keys(options).forEach((key) => {
@@ -26469,14 +26484,14 @@ function mergeDeep3(defaults, options) {
   return result;
 }
 var init_merge_deep = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/merge-deep.js"() {
+  "node_modules/@octokit/endpoint/dist-src/util/merge-deep.js"() {
     "use strict";
     init_esm_shims();
     init_is_plain_object();
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/remove-undefined-properties.js
+// node_modules/@octokit/endpoint/dist-src/util/remove-undefined-properties.js
 function removeUndefinedProperties3(obj) {
   for (const key in obj) {
     if (obj[key] === void 0) {
@@ -26486,13 +26501,13 @@ function removeUndefinedProperties3(obj) {
   return obj;
 }
 var init_remove_undefined_properties = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/remove-undefined-properties.js"() {
+  "node_modules/@octokit/endpoint/dist-src/util/remove-undefined-properties.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/merge.js
+// node_modules/@octokit/endpoint/dist-src/merge.js
 function merge3(defaults, route, options) {
   if (typeof route === "string") {
     let [method, url] = route.split(" ");
@@ -26515,7 +26530,7 @@ function merge3(defaults, route, options) {
   return mergedOptions;
 }
 var init_merge = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/merge.js"() {
+  "node_modules/@octokit/endpoint/dist-src/merge.js"() {
     "use strict";
     init_esm_shims();
     init_lowercase_keys();
@@ -26524,7 +26539,7 @@ var init_merge = __esm({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/add-query-parameters.js
+// node_modules/@octokit/endpoint/dist-src/util/add-query-parameters.js
 function addQueryParameters3(url, parameters) {
   const separator = /\?/.test(url) ? "&" : "?";
   const names = Object.keys(parameters);
@@ -26539,15 +26554,15 @@ function addQueryParameters3(url, parameters) {
   }).join("&");
 }
 var init_add_query_parameters = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/add-query-parameters.js"() {
+  "node_modules/@octokit/endpoint/dist-src/util/add-query-parameters.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/extract-url-variable-names.js
+// node_modules/@octokit/endpoint/dist-src/util/extract-url-variable-names.js
 function removeNonChars3(variableName) {
-  return variableName.replace(/^\W+|\W+$/g, "").split(/,/);
+  return variableName.replace(/(?:^\W+)|(?:(?<!\W)\W+$)/g, "").split(/,/);
 }
 function extractUrlVariableNames3(url) {
   const matches = url.match(urlVariableRegex3);
@@ -26558,14 +26573,14 @@ function extractUrlVariableNames3(url) {
 }
 var urlVariableRegex3;
 var init_extract_url_variable_names = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/extract-url-variable-names.js"() {
+  "node_modules/@octokit/endpoint/dist-src/util/extract-url-variable-names.js"() {
     "use strict";
     init_esm_shims();
-    urlVariableRegex3 = /\{[^}]+\}/g;
+    urlVariableRegex3 = /\{[^{}}]+\}/g;
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/omit.js
+// node_modules/@octokit/endpoint/dist-src/util/omit.js
 function omit3(object, keysToOmit) {
   const result = { __proto__: null };
   for (const key of Object.keys(object)) {
@@ -26576,13 +26591,13 @@ function omit3(object, keysToOmit) {
   return result;
 }
 var init_omit = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/omit.js"() {
+  "node_modules/@octokit/endpoint/dist-src/util/omit.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/url-template.js
+// node_modules/@octokit/endpoint/dist-src/util/url-template.js
 function encodeReserved3(str) {
   return str.split(/(%[0-9A-Fa-f]{2})/g).map(function(part) {
     if (!/%[0-9A-Fa-f]/.test(part)) {
@@ -26714,13 +26729,13 @@ function expand3(template, context2) {
   }
 }
 var init_url_template = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/util/url-template.js"() {
+  "node_modules/@octokit/endpoint/dist-src/util/url-template.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/parse.js
+// node_modules/@octokit/endpoint/dist-src/parse.js
 function parse3(options) {
   let method = options.method.toUpperCase();
   let url = (options.url || "/").replace(/:([a-z]\w+)/g, "{$1}");
@@ -26753,7 +26768,7 @@ function parse3(options) {
     }
     if (url.endsWith("/graphql")) {
       if (options.mediaType.previews?.length) {
-        const previewsFromAcceptHeader = headers.accept.match(/[\w-]+(?=-preview)/g) || [];
+        const previewsFromAcceptHeader = headers.accept.match(/(?<![\w-])[\w-]+(?=-preview)/g) || [];
         headers.accept = previewsFromAcceptHeader.concat(options.mediaType.previews).map((preview) => {
           const format = options.mediaType.format ? `.${options.mediaType.format}` : "+json";
           return `application/vnd.github.${preview}-preview${format}`;
@@ -26785,7 +26800,7 @@ function parse3(options) {
   );
 }
 var init_parse = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/parse.js"() {
+  "node_modules/@octokit/endpoint/dist-src/parse.js"() {
     "use strict";
     init_esm_shims();
     init_add_query_parameters();
@@ -26795,12 +26810,12 @@ var init_parse = __esm({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/endpoint-with-defaults.js
+// node_modules/@octokit/endpoint/dist-src/endpoint-with-defaults.js
 function endpointWithDefaults3(defaults, route, options) {
   return parse3(merge3(defaults, route, options));
 }
 var init_endpoint_with_defaults = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/endpoint-with-defaults.js"() {
+  "node_modules/@octokit/endpoint/dist-src/endpoint-with-defaults.js"() {
     "use strict";
     init_esm_shims();
     init_merge();
@@ -26808,7 +26823,7 @@ var init_endpoint_with_defaults = __esm({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/with-defaults.js
+// node_modules/@octokit/endpoint/dist-src/with-defaults.js
 function withDefaults6(oldDefaults, newDefaults) {
   const DEFAULTS4 = merge3(oldDefaults, newDefaults);
   const endpoint4 = endpointWithDefaults3.bind(null, DEFAULTS4);
@@ -26820,7 +26835,7 @@ function withDefaults6(oldDefaults, newDefaults) {
   });
 }
 var init_with_defaults = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/with-defaults.js"() {
+  "node_modules/@octokit/endpoint/dist-src/with-defaults.js"() {
     "use strict";
     init_esm_shims();
     init_endpoint_with_defaults();
@@ -26829,10 +26844,10 @@ var init_with_defaults = __esm({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/index.js
+// node_modules/@octokit/endpoint/dist-src/index.js
 var endpoint3;
 var init_dist_src6 = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-src/index.js"() {
+  "node_modules/@octokit/endpoint/dist-src/index.js"() {
     "use strict";
     init_esm_shims();
     init_with_defaults();
@@ -26841,17 +26856,34 @@ var init_dist_src6 = __esm({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-src/version.js
-var VERSION12;
-var init_version4 = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-src/version.js"() {
+// node_modules/@octokit/request/node_modules/universal-user-agent/dist-web/index.js
+function getUserAgent4() {
+  if (typeof navigator === "object" && "userAgent" in navigator) {
+    return navigator.userAgent;
+  }
+  if (typeof process === "object" && process.version !== void 0) {
+    return `Node.js/${process.version.substr(1)} (${process.platform}; ${process.arch})`;
+  }
+  return "<environment undetectable>";
+}
+var init_dist_web3 = __esm({
+  "node_modules/@octokit/request/node_modules/universal-user-agent/dist-web/index.js"() {
     "use strict";
     init_esm_shims();
-    VERSION12 = "8.4.0";
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-src/is-plain-object.js
+// node_modules/@octokit/request/dist-src/version.js
+var VERSION12;
+var init_version4 = __esm({
+  "node_modules/@octokit/request/dist-src/version.js"() {
+    "use strict";
+    init_esm_shims();
+    VERSION12 = "8.4.1";
+  }
+});
+
+// node_modules/@octokit/request/dist-src/is-plain-object.js
 function isPlainObject6(value) {
   if (typeof value !== "object" || value === null)
     return false;
@@ -26864,7 +26896,7 @@ function isPlainObject6(value) {
   return typeof Ctor === "function" && Ctor instanceof Ctor && Function.prototype.call(Ctor) === Function.prototype.call(value);
 }
 var init_is_plain_object2 = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-src/is-plain-object.js"() {
+  "node_modules/@octokit/request/dist-src/is-plain-object.js"() {
     "use strict";
     init_esm_shims();
   }
@@ -26872,7 +26904,7 @@ var init_is_plain_object2 = __esm({
 
 // node_modules/deprecation/dist-web/index.js
 var Deprecation;
-var init_dist_web2 = __esm({
+var init_dist_web4 = __esm({
   "node_modules/deprecation/dist-web/index.js"() {
     "use strict";
     init_esm_shims();
@@ -26966,13 +26998,13 @@ var require_once = __commonJS({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request-error/dist-src/index.js
+// node_modules/@octokit/request-error/dist-src/index.js
 var import_once, logOnceCode, logOnceHeaders, RequestError4;
 var init_dist_src7 = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request-error/dist-src/index.js"() {
+  "node_modules/@octokit/request-error/dist-src/index.js"() {
     "use strict";
     init_esm_shims();
-    init_dist_web2();
+    init_dist_web4();
     import_once = __toESM(require_once());
     logOnceCode = (0, import_once.default)((deprecation) => console.warn(deprecation));
     logOnceHeaders = (0, import_once.default)((deprecation) => console.warn(deprecation));
@@ -26996,7 +27028,7 @@ var init_dist_src7 = __esm({
         if (options.request.headers.authorization) {
           requestCopy.headers = Object.assign({}, options.request.headers, {
             authorization: options.request.headers.authorization.replace(
-              / .*$/,
+              /(?<! ) .*$/,
               " [REDACTED]"
             )
           });
@@ -27028,18 +27060,18 @@ var init_dist_src7 = __esm({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-src/get-buffer-response.js
+// node_modules/@octokit/request/dist-src/get-buffer-response.js
 function getBufferResponse(response) {
   return response.arrayBuffer();
 }
 var init_get_buffer_response = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-src/get-buffer-response.js"() {
+  "node_modules/@octokit/request/dist-src/get-buffer-response.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-src/fetch-wrapper.js
+// node_modules/@octokit/request/dist-src/fetch-wrapper.js
 function fetchWrapper3(requestOptions) {
   const log = requestOptions.request && requestOptions.request.log ? requestOptions.request.log : console;
   const parseSuccessResponseBody = requestOptions.request?.parseSuccessResponseBody !== false;
@@ -27074,7 +27106,7 @@ function fetchWrapper3(requestOptions) {
       headers[keyAndValue[0]] = keyAndValue[1];
     }
     if ("deprecation" in headers) {
-      const matches = headers.link && headers.link.match(/<([^>]+)>; rel="deprecation"/);
+      const matches = headers.link && headers.link.match(/<([^<>]+)>; rel="deprecation"/);
       const deprecationLink = matches && matches.pop();
       log.warn(
         `[@octokit/request] "${requestOptions.method} ${requestOptions.url}" is deprecated. It is scheduled to be removed on ${headers.sunset}${deprecationLink ? `. See ${deprecationLink}` : ""}`
@@ -27175,7 +27207,7 @@ function toErrorMessage3(data) {
   return `Unknown error: ${JSON.stringify(data)}`;
 }
 var init_fetch_wrapper = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-src/fetch-wrapper.js"() {
+  "node_modules/@octokit/request/dist-src/fetch-wrapper.js"() {
     "use strict";
     init_esm_shims();
     init_is_plain_object2();
@@ -27184,7 +27216,7 @@ var init_fetch_wrapper = __esm({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-src/with-defaults.js
+// node_modules/@octokit/request/dist-src/with-defaults.js
 function withDefaults7(oldEndpoint, newDefaults) {
   const endpoint4 = oldEndpoint.defaults(newDefaults);
   const newApi = function(route, parameters) {
@@ -27209,32 +27241,32 @@ function withDefaults7(oldEndpoint, newDefaults) {
   });
 }
 var init_with_defaults2 = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-src/with-defaults.js"() {
+  "node_modules/@octokit/request/dist-src/with-defaults.js"() {
     "use strict";
     init_esm_shims();
     init_fetch_wrapper();
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-src/index.js
+// node_modules/@octokit/request/dist-src/index.js
 var request3;
 var init_dist_src8 = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-src/index.js"() {
+  "node_modules/@octokit/request/dist-src/index.js"() {
     "use strict";
     init_esm_shims();
     init_dist_src6();
-    init_dist_web();
+    init_dist_web3();
     init_version4();
     init_with_defaults2();
     request3 = withDefaults7(endpoint3, {
       headers: {
-        "user-agent": `octokit-request.js/${VERSION12} ${getUserAgent2()}`
+        "user-agent": `octokit-request.js/${VERSION12} ${getUserAgent4()}`
       }
     });
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/graphql/dist-web/index.js
+// node_modules/@actions/github/node_modules/@octokit/graphql/dist-web/index.js
 function _buildMessageForResponseErrors2(data) {
   return `Request failed due to following response errors:
 ` + data.errors.map((e) => ` - ${e.message}`).join("\n");
@@ -27247,8 +27279,7 @@ function graphql3(request22, query, options) {
       );
     }
     for (const key in options) {
-      if (!FORBIDDEN_VARIABLE_OPTIONS2.includes(key))
-        continue;
+      if (!FORBIDDEN_VARIABLE_OPTIONS2.includes(key)) continue;
       return Promise.reject(
         new Error(
           `[@octokit/graphql] "${key}" cannot be used as variable name`
@@ -27306,13 +27337,13 @@ function withCustomRequest2(customRequest) {
   });
 }
 var VERSION13, GraphqlResponseError2, NON_VARIABLE_OPTIONS2, FORBIDDEN_VARIABLE_OPTIONS2, GHES_V3_SUFFIX_REGEX2, graphql22;
-var init_dist_web3 = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/graphql/dist-web/index.js"() {
+var init_dist_web5 = __esm({
+  "node_modules/@actions/github/node_modules/@octokit/graphql/dist-web/index.js"() {
     "use strict";
     init_esm_shims();
     init_dist_src8();
     init_dist_web();
-    VERSION13 = "7.1.0";
+    VERSION13 = "7.1.1";
     GraphqlResponseError2 = class extends Error {
       constructor(request22, headers, response) {
         super(_buildMessageForResponseErrors2(response));
@@ -27348,7 +27379,7 @@ var init_dist_web3 = __esm({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/auth-token/dist-src/auth.js
+// node_modules/@actions/github/node_modules/@octokit/auth-token/dist-src/auth.js
 async function auth2(token) {
   const isApp = token.split(/\./).length === 3;
   const isInstallation = REGEX_IS_INSTALLATION_LEGACY.test(token) || REGEX_IS_INSTALLATION.test(token);
@@ -27362,7 +27393,7 @@ async function auth2(token) {
 }
 var REGEX_IS_INSTALLATION_LEGACY, REGEX_IS_INSTALLATION, REGEX_IS_USER_TO_SERVER;
 var init_auth = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/auth-token/dist-src/auth.js"() {
+  "node_modules/@actions/github/node_modules/@octokit/auth-token/dist-src/auth.js"() {
     "use strict";
     init_esm_shims();
     REGEX_IS_INSTALLATION_LEGACY = /^v1\./;
@@ -27371,7 +27402,7 @@ var init_auth = __esm({
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/auth-token/dist-src/with-authorization-prefix.js
+// node_modules/@actions/github/node_modules/@octokit/auth-token/dist-src/with-authorization-prefix.js
 function withAuthorizationPrefix2(token) {
   if (token.split(/\./).length === 3) {
     return `bearer ${token}`;
@@ -27379,13 +27410,13 @@ function withAuthorizationPrefix2(token) {
   return `token ${token}`;
 }
 var init_with_authorization_prefix = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/auth-token/dist-src/with-authorization-prefix.js"() {
+  "node_modules/@actions/github/node_modules/@octokit/auth-token/dist-src/with-authorization-prefix.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/auth-token/dist-src/hook.js
+// node_modules/@actions/github/node_modules/@octokit/auth-token/dist-src/hook.js
 async function hook2(token, request4, route, parameters) {
   const endpoint4 = request4.endpoint.merge(
     route,
@@ -27395,17 +27426,17 @@ async function hook2(token, request4, route, parameters) {
   return request4(endpoint4);
 }
 var init_hook = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/auth-token/dist-src/hook.js"() {
+  "node_modules/@actions/github/node_modules/@octokit/auth-token/dist-src/hook.js"() {
     "use strict";
     init_esm_shims();
     init_with_authorization_prefix();
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/auth-token/dist-src/index.js
+// node_modules/@actions/github/node_modules/@octokit/auth-token/dist-src/index.js
 var createTokenAuth3;
 var init_dist_src9 = __esm({
-  "node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/auth-token/dist-src/index.js"() {
+  "node_modules/@actions/github/node_modules/@octokit/auth-token/dist-src/index.js"() {
     "use strict";
     init_esm_shims();
     init_auth();
@@ -27432,17 +27463,32 @@ var dist_web_exports = {};
 __export(dist_web_exports, {
   Octokit: () => Octokit2
 });
+function createLogger2(logger = {}) {
+  if (typeof logger.debug !== "function") {
+    logger.debug = noop5;
+  }
+  if (typeof logger.info !== "function") {
+    logger.info = noop5;
+  }
+  if (typeof logger.warn !== "function") {
+    logger.warn = consoleWarn2;
+  }
+  if (typeof logger.error !== "function") {
+    logger.error = consoleError2;
+  }
+  return logger;
+}
 var import_before_after_hook2, VERSION14, noop5, consoleWarn2, consoleError2, userAgentTrail2, Octokit2;
-var init_dist_web4 = __esm({
+var init_dist_web6 = __esm({
   "node_modules/@actions/github/node_modules/@octokit/core/dist-web/index.js"() {
     "use strict";
     init_esm_shims();
     init_dist_web();
     import_before_after_hook2 = __toESM(require_before_after_hook());
     init_dist_src8();
-    init_dist_web3();
+    init_dist_web5();
     init_dist_src9();
-    VERSION14 = "5.2.0";
+    VERSION14 = "5.2.2";
     noop5 = () => {
     };
     consoleWarn2 = console.warn.bind(console);
@@ -27520,15 +27566,7 @@ var init_dist_web4 = __esm({
         }
         this.request = request3.defaults(requestDefaults);
         this.graphql = withCustomRequest2(this.request).defaults(requestDefaults);
-        this.log = Object.assign(
-          {
-            debug: noop5,
-            info: noop5,
-            warn: consoleWarn2,
-            error: consoleError2
-          },
-          options.log
-        );
+        this.log = createLogger2(options.log);
         this.hook = hook3;
         if (!options.authStrategy) {
           if (!options.auth) {
@@ -29854,7 +29892,7 @@ function paginateRest2(octokit) {
   };
 }
 var VERSION16, composePaginateRest2, paginatingEndpoints;
-var init_dist_web5 = __esm({
+var init_dist_web7 = __esm({
   "node_modules/@actions/github/node_modules/@octokit/plugin-paginate-rest/dist-web/index.js"() {
     "use strict";
     init_esm_shims();
@@ -30138,9 +30176,9 @@ var require_utils4 = __commonJS({
     exports.getOctokitOptions = exports.GitHub = exports.defaults = exports.context = void 0;
     var Context2 = __importStar(require_context());
     var Utils = __importStar(require_utils3());
-    var core_1 = (init_dist_web4(), __toCommonJS(dist_web_exports));
+    var core_1 = (init_dist_web6(), __toCommonJS(dist_web_exports));
     var plugin_rest_endpoint_methods_1 = (init_dist_src10(), __toCommonJS(dist_src_exports));
-    var plugin_paginate_rest_1 = (init_dist_web5(), __toCommonJS(dist_web_exports2));
+    var plugin_paginate_rest_1 = (init_dist_web7(), __toCommonJS(dist_web_exports2));
     exports.context = new Context2.Context();
     var baseUrl = Utils.getApiBaseUrl();
     exports.defaults = {
@@ -36900,9 +36938,9 @@ var init_dist = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/helper/adapter/index.js
+// node_modules/hono/dist/helper/adapter/index.js
 var init_adapter = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/helper/adapter/index.js"() {
+  "node_modules/hono/dist/helper/adapter/index.js"() {
     "use strict";
     init_esm_shims();
   }
@@ -38881,33 +38919,33 @@ var init_esm = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/compose.js
+// node_modules/hono/dist/compose.js
 var init_compose = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/compose.js"() {
+  "node_modules/hono/dist/compose.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/http-exception.js
+// node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/http-exception.js"() {
+  "node_modules/hono/dist/http-exception.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/request/constants.js
+// node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/request/constants.js"() {
+  "node_modules/hono/dist/request/constants.js"() {
     "use strict";
     init_esm_shims();
     GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/utils/body.js
+// node_modules/hono/dist/utils/body.js
 async function parseFormData(request4, options) {
   const formData = await request4.formData();
   if (formData) {
@@ -38938,7 +38976,7 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/utils/body.js"() {
+  "node_modules/hono/dist/utils/body.js"() {
     "use strict";
     init_esm_shims();
     init_request();
@@ -38984,10 +39022,10 @@ var init_body = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/utils/url.js
+// node_modules/hono/dist/utils/url.js
 var tryDecode, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/utils/url.js"() {
+  "node_modules/hono/dist/utils/url.js"() {
     "use strict";
     init_esm_shims();
     tryDecode = (str, decoder) => {
@@ -39087,10 +39125,10 @@ var init_url = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/request.js
+// node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/request.js"() {
+  "node_modules/hono/dist/request.js"() {
     "use strict";
     init_esm_shims();
     init_http_exception();
@@ -39366,17 +39404,17 @@ var init_request = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/utils/html.js
+// node_modules/hono/dist/utils/html.js
 var init_html = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/utils/html.js"() {
+  "node_modules/hono/dist/utils/html.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/context.js
+// node_modules/hono/dist/context.js
 var init_context = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/context.js"() {
+  "node_modules/hono/dist/context.js"() {
     "use strict";
     init_esm_shims();
     init_request();
@@ -39384,25 +39422,25 @@ var init_context = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router.js
+// node_modules/hono/dist/router.js
 var init_router = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router.js"() {
+  "node_modules/hono/dist/router.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/utils/constants.js
+// node_modules/hono/dist/utils/constants.js
 var init_constants2 = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/utils/constants.js"() {
+  "node_modules/hono/dist/utils/constants.js"() {
     "use strict";
     init_esm_shims();
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/hono-base.js
+// node_modules/hono/dist/hono-base.js
 var init_hono_base = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/hono-base.js"() {
+  "node_modules/hono/dist/hono-base.js"() {
     "use strict";
     init_esm_shims();
     init_compose();
@@ -39413,37 +39451,37 @@ var init_hono_base = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// node_modules/hono/dist/router/reg-exp-router/matcher.js
 var init_matcher = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
     "use strict";
     init_esm_shims();
     init_router();
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/reg-exp-router/node.js
+// node_modules/hono/dist/router/reg-exp-router/node.js
 var regExpMetaChars;
 var init_node = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "node_modules/hono/dist/router/reg-exp-router/node.js"() {
     "use strict";
     init_esm_shims();
     regExpMetaChars = new Set(".\\+*[^]$()");
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/reg-exp-router/trie.js
+// node_modules/hono/dist/router/reg-exp-router/trie.js
 var init_trie = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "node_modules/hono/dist/router/reg-exp-router/trie.js"() {
     "use strict";
     init_esm_shims();
     init_node();
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/reg-exp-router/router.js
+// node_modules/hono/dist/router/reg-exp-router/router.js
 var init_router2 = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "node_modules/hono/dist/router/reg-exp-router/router.js"() {
     "use strict";
     init_esm_shims();
     init_router();
@@ -39454,9 +39492,9 @@ var init_router2 = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
     "use strict";
     init_esm_shims();
     init_router();
@@ -39465,9 +39503,9 @@ var init_prepared_router = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/reg-exp-router/index.js
+// node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "node_modules/hono/dist/router/reg-exp-router/index.js"() {
     "use strict";
     init_esm_shims();
     init_router2();
@@ -39475,27 +39513,27 @@ var init_reg_exp_router = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/smart-router/router.js
+// node_modules/hono/dist/router/smart-router/router.js
 var init_router3 = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/smart-router/router.js"() {
+  "node_modules/hono/dist/router/smart-router/router.js"() {
     "use strict";
     init_esm_shims();
     init_router();
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/smart-router/index.js
+// node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/smart-router/index.js"() {
+  "node_modules/hono/dist/router/smart-router/index.js"() {
     "use strict";
     init_esm_shims();
     init_router3();
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/trie-router/node.js
+// node_modules/hono/dist/router/trie-router/node.js
 var init_node2 = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/trie-router/node.js"() {
+  "node_modules/hono/dist/router/trie-router/node.js"() {
     "use strict";
     init_esm_shims();
     init_router();
@@ -39503,9 +39541,9 @@ var init_node2 = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/trie-router/router.js
+// node_modules/hono/dist/router/trie-router/router.js
 var init_router4 = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/trie-router/router.js"() {
+  "node_modules/hono/dist/router/trie-router/router.js"() {
     "use strict";
     init_esm_shims();
     init_url();
@@ -39513,18 +39551,18 @@ var init_router4 = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/trie-router/index.js
+// node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/router/trie-router/index.js"() {
+  "node_modules/hono/dist/router/trie-router/index.js"() {
     "use strict";
     init_esm_shims();
     init_router4();
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/hono.js
+// node_modules/hono/dist/hono.js
 var init_hono = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/hono.js"() {
+  "node_modules/hono/dist/hono.js"() {
     "use strict";
     init_esm_shims();
     init_hono_base();
@@ -39534,9 +39572,9 @@ var init_hono = __esm({
   }
 });
 
-// node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/index.js
+// node_modules/hono/dist/index.js
 var init_dist2 = __esm({
-  "node_modules/@ubiquity-os/plugin-sdk/node_modules/hono/dist/index.js"() {
+  "node_modules/hono/dist/index.js"() {
     "use strict";
     init_esm_shims();
     init_hono();
@@ -39787,14 +39825,71 @@ function truncate(value, maxChars) {
   if (value.length <= maxChars) return value;
   return value.slice(0, maxChars).trimEnd() + "...";
 }
+function appendStyleExamples(nodes, examples, limit, marker) {
+  for (const node of nodes) {
+    const body = (node?.body ?? "").trim();
+    if (!body) continue;
+    if (marker && body.includes(marker)) continue;
+    if (body.length < 40) continue;
+    examples.push({
+      body,
+      createdAt: String(node?.createdAt ?? ""),
+      url: node?.url,
+      repo: node?.repository?.nameWithOwner
+    });
+    if (examples.length >= limit) break;
+  }
+}
+async function fetchStylePage(params) {
+  const { headers, variables, logger } = params;
+  const resp = await fetch("https://api.github.com/graphql", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ query: STYLE_QUERY, variables })
+  });
+  if (!resp.ok) {
+    const txt = await safeText(resp);
+    logger.info("[personalAgent] Style fetch failed (non-fatal)", { status: resp.status, body: txt.slice(0, 500) });
+    return null;
+  }
+  const json = await resp.json();
+  const issueComments = json.data?.user?.contributionsCollection?.issueComments;
+  return {
+    nodes: issueComments?.nodes ?? [],
+    pageInfo: issueComments?.pageInfo ?? {}
+  };
+}
+async function collectStyleExamples(params) {
+  const { login, from, to, headers, limit, marker, logger } = params;
+  const examples = [];
+  let cursor = null;
+  let hasNext = true;
+  while (hasNext && examples.length < limit) {
+    const page = await fetchStylePage({
+      headers,
+      variables: {
+        login,
+        from: from.toISOString(),
+        to: to.toISOString(),
+        cursor
+      },
+      logger
+    });
+    if (!page) return examples;
+    appendStyleExamples(page.nodes, examples, limit, marker);
+    hasNext = Boolean(page.pageInfo.hasNextPage);
+    cursor = page.pageInfo.endCursor ?? null;
+  }
+  return examples.slice(0, limit);
+}
 function resolveReadToken(contextAuthToken) {
   return selectReadToken() || String(contextAuthToken || "").trim();
 }
 function resolveWriteToken(contextAuthToken) {
   const pat = selectWriteToken();
   if (pat) return pat;
-  const allowAppPost = getEnvString2("UOS_ALLOW_APP_POST", "0") === "1";
-  return allowAppPost ? String(contextAuthToken || "").trim() : "";
+  const isAppPostAllowed = getEnvString2("UOS_ALLOW_APP_POST", "0") === "1";
+  return isAppPostAllowed ? String(contextAuthToken || "").trim() : "";
 }
 async function createGithubComment(params, logger) {
   const { owner, repo, issueNumber, body, token } = params;
@@ -39887,62 +39982,21 @@ async function fetchStyleExamples(params) {
   if (Number.isNaN(maxDate.getTime())) maxDate = /* @__PURE__ */ new Date();
   const from = new Date(maxDate.getTime() - lookbackDays * 24 * 60 * 60 * 1e3);
   const marker = getReplyMarker();
-  const query = `query($login: String!, $from: DateTime!, $to: DateTime!, $cursor: String) {
-    user(login: $login) {
-      contributionsCollection(from: $from, to: $to) {
-        issueComments(first: 50, after: $cursor) {
-          nodes { body createdAt url repository { nameWithOwner } }
-          pageInfo { hasNextPage endCursor }
-        }
-      }
-    }
-  }`;
   const headers = buildHeaders(token);
-  const examples = [];
-  let cursor = null;
-  let hasNext = true;
-  while (hasNext && examples.length < limit) {
-    const variables = {
-      login,
-      from: from.toISOString(),
-      to: maxDate.toISOString(),
-      cursor
-    };
-    const resp = await fetch("https://api.github.com/graphql", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ query, variables })
-    });
-    if (!resp.ok) {
-      const txt = await safeText(resp);
-      logger.info("[personalAgent] Style fetch failed (non-fatal)", { status: resp.status, body: txt.slice(0, 500) });
-      return examples;
-    }
-    const json = await resp.json();
-    const nodes = json.data?.user?.contributionsCollection?.issueComments?.nodes ?? [];
-    for (const node of nodes) {
-      const body = (node?.body ?? "").trim();
-      if (!body) continue;
-      if (marker && body.includes(marker)) continue;
-      if (body.length < 40) continue;
-      examples.push({
-        body,
-        createdAt: String(node?.createdAt ?? ""),
-        url: node?.url,
-        repo: node?.repository?.nameWithOwner
-      });
-      if (examples.length >= limit) break;
-    }
-    const pageInfo = json.data?.user?.contributionsCollection?.issueComments?.pageInfo;
-    hasNext = Boolean(pageInfo?.hasNextPage);
-    cursor = pageInfo?.endCursor ?? null;
-  }
-  return examples.slice(0, limit);
+  return collectStyleExamples({
+    login,
+    from,
+    to: maxDate,
+    headers,
+    limit,
+    marker,
+    logger
+  });
 }
 async function maybeFetchIssueContext(args) {
   const { owner, repo, issueNumber, isPr, token, logger } = args;
-  const enabled = (getEnvString2("UOS_CONTEXT_FETCH", "1") ?? "1") === "1";
-  if (!enabled) return null;
+  const isContextFetchEnabled = (getEnvString2("UOS_CONTEXT_FETCH", "1") ?? "1") === "1";
+  if (!isContextFetchEnabled) return null;
   try {
     return await fetchIssueContext({ owner, repo, issueNumber, isPr, token });
   } catch (error) {
@@ -39952,8 +40006,8 @@ async function maybeFetchIssueContext(args) {
 }
 async function maybeFetchStyleExamples(args) {
   const { login, token, logger } = args;
-  const enabled = (getEnvString2("UOS_STYLE_FETCH", "1") ?? "1") === "1";
-  if (!enabled) return [];
+  const isStyleFetchEnabled = (getEnvString2("UOS_STYLE_FETCH", "1") ?? "1") === "1";
+  if (!isStyleFetchEnabled) return [];
   try {
     return await fetchStyleExamples({ login, token, logger });
   } catch (error) {
@@ -39961,12 +40015,23 @@ async function maybeFetchStyleExamples(args) {
     return [];
   }
 }
+var STYLE_QUERY;
 var init_github = __esm({
   "src/handlers/codex-agent/lib/github.ts"() {
     "use strict";
     init_esm_shims();
     init_config();
     init_utils();
+    STYLE_QUERY = `query($login: String!, $from: DateTime!, $to: DateTime!, $cursor: String) {
+  user(login: $login) {
+    contributionsCollection(from: $from, to: $to) {
+      issueComments(first: 50, after: $cursor) {
+        nodes { body createdAt url repository { nameWithOwner } }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}`;
   }
 });
 
@@ -40143,8 +40208,7 @@ function extractCommand(body, agentOwner) {
   if (!trimmed) return null;
   const mention = `@${agentOwner}`.toLowerCase();
   if (!trimmed.toLowerCase().startsWith(mention)) return null;
-  const rest = trimmed.slice(mention.length).replace(/^[:,]?\s+/, "").trim();
-  return rest;
+  return trimmed.slice(mention.length).replace(/^[:,]?\s+/, "").trim();
 }
 function extractLlmContent(result) {
   const res = result;
