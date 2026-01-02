@@ -1,54 +1,54 @@
 # `@ubiquity-os/personal-agent`
 
-The Personal Agent is a [UbiquityOS](https://github.com/apps/ubiquity-os) plugin designed to run actions in user's Github account. It is forked, configured, and hosted by a Github user. Any issue comment beginning with `@username` is forwarded to this plugin for processing. Find below a list features offered by the plugin:
+Personal Agent is a UbiquityOS plugin that replies as the repo owner when a comment starts with `@<owner>`. The kernel dispatches a workflow in your fork, the agent calls `ai.ubq.fi` via the plugin SDK, and then posts the reply as you using a PAT.
 
-- `@username say hello`
-  The plugin should respond with a `Hello, world!`.
+## What It Does
 
-More features coming soon...
+- Any issue comment that starts with `@username` triggers the agent.
+- The agent pulls issue context and a few of your recent comments to mimic your voice.
+- It replies as you (using a PAT) and appends an invisible marker so AI outputs are easy to filter later.
 
-Communication between [UbiquityOS](https://github.com/apps/ubiquity-os) and the [Personal Agent](https://github.com/ubiquity-os-marketplace/personal-agent) plugin is handled by [Personal Agent Bridge](https://github.com/ubiquity-os-marketplace/personal-agent-bridge).
+## Setup
 
-## How to set up?
-
-- Fork this repository with exactly the same name `personal-agent` under your personal account.
-
-- Generate a GitHub classic Personal Access Token PAT with access to repositories.
-
-- Add PAT to your fork's Actions secret called `USER_PAT`.
-
-- Install [Ubiquity-OS](https://github.com/marketplace/ubiquity-os) Github App to your fork
+1. Fork this repo as `personal-agent` under your account.
+2. Install the UbiquityOS GitHub App on the repos where you want the agent to run.
+3. Add secrets to your fork:
+   - `PAT_FULL` (recommended) or `USER_PAT` for posting as you.
+4. (Optional) Set `UOS_AI_MODEL` if you want a specific model.
 
 ## Usage
 
-Go to any repository issue where UbiquityOS is installed. Comment as below:
+Comment in any repo where UbiquityOS is installed:
 
 ```
-@username say hello
+@username summarize this issue and propose next steps
 ```
 
-Replace `username` with the username where the plugin has been forked. You should get a reply from the personal-agent of the user.
+Replace `username` with the account that owns the fork. The agent will reply as that user.
 
-## Troubleshooting
+## Voice & Style
 
-Check [Personal Agent Bridge](https://github.com/ubiquity-os-marketplace/personal-agent-bridge/actions/workflows/compute.yml) and Personal Agent fork's Actions logs.
-
-## Get started with development
-
-- First, configure your own Personal Agent Bridge. You can read its [documentation](https://github.com/ubiquity-os-marketplace/personal-agent-bridge/blob/development/README.md).
-
-- Install dependencies
+The agent fetches recent comments written by the owner and uses them as style examples. To keep AI outputs out of the style pool, the agent appends this marker to its own replies:
 
 ```
-bun install
+<!-- pa:ai -->
 ```
 
-- Run tests
+You can override behavior with env vars (see `src/types/env.ts`).
 
-```
-bun run test
-```
+## Development
 
-## More information
+- Install dependencies:
+  ```
+  bun install
+  ```
+- Run tests:
+  ```
+  bun run test
+  ```
 
-The initial discussion about the development of this plugin can be found [here](https://github.com/ubiquity-os/plugins-wishlist/issues/3).
+## Notes
+
+- The compute workflow runs the committed `dist/index.js` only (no installs/builds in compute).
+- The kernel dispatch must pass a real installation token (see kernel `callPersonalAgent`).
+- If you want to allow posting as the GitHub App when no PAT is set, add `UOS_ALLOW_APP_POST=1` to the workflow env.

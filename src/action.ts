@@ -3,10 +3,12 @@ import { customOctokit } from "@ubiquity-os/plugin-sdk/octokit";
 import { LOG_LEVEL, LogLevel } from "@ubiquity-os/ubiquity-os-logger";
 import { runPlugin } from "./index";
 import { Env, envSchema, PluginSettings, pluginSettingsSchema, SupportedEvents } from "./types";
+import { selectWriteToken } from "./handlers/codex-agent/lib/config";
 
 export default createActionsPlugin<PluginSettings, Env, null, SupportedEvents>(
   (context) => {
-    context.octokit = new customOctokit({ auth: context.env.USER_PAT });
+    const token = selectWriteToken();
+    context.octokit = new customOctokit({ auth: token });
     return runPlugin(context);
   },
   {

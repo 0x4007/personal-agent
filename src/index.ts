@@ -2,6 +2,7 @@ import type { Context } from "./types";
 import { isIssueCommentEvent } from "./types/typeguards";
 import fs from "node:fs";
 import { brotliDecompressSync } from "node:zlib";
+import { customOctokit } from "@ubiquity-os/plugin-sdk/octokit";
 
 type CodexAgent = typeof import("./handlers/codex-agent") extends { codexAgent: infer Fn } ? Fn : never;
 
@@ -29,6 +30,19 @@ function isModuleNotFound(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
 
   return "code" in error && (error as { code?: unknown }).code === "ERR_MODULE_NOT_FOUND";
+}
+
+function parseJsonInput<T>(value: unknown, fallback: T): T {
+  if (value == null) return fallback;
+  if (typeof value === "object") return value as T;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
 }
 
 /**
@@ -60,6 +74,11 @@ async function mainFromActionsEnv() {
 
     const eventName = inputs.eventName || evt?.event_name || "issue_comment.created";
     const payload = await decodeEventPayload(inputs.eventPayload);
+
+    const authToken = typeof inputs.authToken === "string" ? inputs.authToken : "";
+    const ubiquityKernelToken = typeof inputs.ubiquityKernelToken === "string" ? inputs.ubiquityKernelToken : "";
+    const config = parseJsonInput<Record<string, unknown>>(inputs.settings, {});
+    const command = parseJsonInput<unknown>(inputs.command, null);
 
     // Optional verbose logging to inspect exactly what Kernel passed in
     if (process.env.DEBUG_EVENT_RAW === "1") {
@@ -98,12 +117,18 @@ async function mainFromActionsEnv() {
       },
     };
 
+    const octokit = new customOctokit({ auth: authToken || undefined });
     const context: Record<string, unknown> = {
       eventName,
       payload,
       env: process.env,
       logger,
       commentHandler: { postComment: async () => null },
+      authToken,
+      ubiquityKernelToken,
+      config,
+      command,
+      octokit,
     };
 
     await runPlugin(context as Context);
@@ -117,7 +142,7 @@ async function decodeEventPayload(maybe: unknown): Promise<unknown> {
   if (!maybe) return {};
   if (typeof maybe === "object") return maybe as Record<string, unknown>;
   if (typeof maybe === "string") {
-    // Try brotli+base64 → JSON, else parse as JSON string
+    // Try brotli+base64 -> JSON, else parse as JSON string
     try {
       const buf = Buffer.from(maybe, "base64");
       const decompressed = brotliDecompressSync(buf);

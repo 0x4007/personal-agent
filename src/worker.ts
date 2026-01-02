@@ -6,12 +6,14 @@ import { ExecutionContext } from "hono";
 import manifest from "../manifest.json";
 import { runPlugin } from "./index";
 import { Env, envSchema, PluginSettings, pluginSettingsSchema, SupportedEvents } from "./types";
+import { selectWriteToken } from "./handlers/codex-agent/lib/config";
 
 export default {
   async fetch(request: Request, env: Env, executionCtx?: ExecutionContext) {
     return createPlugin<PluginSettings, Env, null, SupportedEvents>(
       (context) => {
-        context.octokit = new customOctokit({ auth: context.env.USER_PAT });
+        const token = selectWriteToken();
+        context.octokit = new customOctokit({ auth: token });
         return runPlugin(context);
       },
       manifest as Manifest,

@@ -1,18 +1,28 @@
+import { callLlm } from "@ubiquity-os/plugin-sdk";
 import { Context } from "../../types";
-import { parseMentionEnv } from "./lib/config";
-import { buildRichPrompt, buildFullPrompt } from "./lib/prompt";
-import { maybePrefetchContext, maybeCreatePlaceholderComment } from "./lib/github";
-import { buildRequestBody, logPiBodyIfEnabled, invokePiCodex } from "./lib/pi";
-import { logPayloadIfEnabled, maybeWriteRuntimeLogs } from "./lib/logs";
+import { getEnvString } from "./lib/config";
+import { maybeFetchIssueContext, maybeFetchStyleExamples, resolveReadToken, resolveWriteToken, createGithubComment } from "./lib/github";
+import { logPromptIfEnabled, maybeWriteRuntimeLogs } from "./lib/logs";
+import { appendReplyMarker, sanitizeReply } from "./lib/output";
+import { buildPromptMessages } from "./lib/prompt";
 
-/**
- * Calls the Raspberry Pi server to run Codex and posts the result back to GitHub.
- *
- * Env requirements (set in the workflow env):
- * - AGENT_OWNER: GitHub username to match @mention
- * - PI_URL: Base URL to the Pi server (e.g., https://pi.pavlovcik.com)
- * - ACCESS_MODE: "read-only" | "full" (set by the workflow)
- */
+function extractCommand(body: string, agentOwner: string): string | null {
+  const trimmed = body.trim();
+  if (!trimmed) return null;
+  const mention = `@${agentOwner}`.toLowerCase();
+  if (!trimmed.toLowerCase().startsWith(mention)) return null;
+  return trimmed
+    .slice(mention.length)
+    .replace(/^[:,]?\s+/, "")
+    .trim();
+}
+
+function extractLlmContent(result: unknown): string {
+  const res = result as { choices?: Array<{ message?: { content?: string } }> };
+  const content = res?.choices?.[0]?.message?.content;
+  return typeof content === "string" ? content : "";
+}
+
 export async function codexAgent(context: Context): Promise<void> {
   const { logger, payload, env } = context;
 
@@ -24,87 +34,70 @@ export async function codexAgent(context: Context): Promise<void> {
   const body = String(payload.comment.body || "");
   const agentOwner = env.AGENT_OWNER;
 
-  const isSelf = Boolean(sender && agentOwner && String(sender).toLowerCase() === String(agentOwner).toLowerCase());
-  const accessLevel = isSelf ? "full" : "read-only";
+  if (!agentOwner) {
+    logger.error("Missing AGENT_OWNER env");
+    return;
+  }
 
-  logger.info(`Executing codexAgent`, { sender, repo, issueNumber, owner, agentOwner, accessLevel });
-
-  if (!body.trim().startsWith(`@${agentOwner}`)) {
+  const command = extractCommand(body, agentOwner);
+  if (command === null) {
     logger.info(`Comment does not start with @${agentOwner}`, { body });
     return;
   }
 
-  const command = body.trim().substring(`@${agentOwner}`.length).trim();
-
-  if (!command) {
-    await context.commentHandler.postComment(context, logger.error("No command provided after username mention"));
+  const authToken = String((context as unknown as { authToken?: string }).authToken ?? "").trim();
+  if (!authToken) {
+    logger.error("Missing authToken from kernel inputs; cannot call LLM");
     return;
   }
 
-  const piBaseUrl = String(process.env.PI_URL || env.PI_URL || "https://pi.pavlovcik.com");
-  const timeoutMs = Number(process.env.PI_TIMEOUT_MS || 30000);
-  // Posting policy: only owner triggers posting on the Pi; non-owner is read-only
-  const shouldPost = isSelf;
-  const mentionOverride = parseMentionEnv(process.env.PI_MENTION);
+  const readToken = resolveReadToken(authToken);
+  const writeToken = resolveWriteToken(authToken);
 
-  // Optionally prefetch GitHub context (issue/PR + comments) using the job token
-  const fetchedContext = await maybePrefetchContext({ logger, isSelf, owner, repo, issueNumber, isPr });
-  // No fast paths: always go through Codex (generalized system)
+  const issueContext = await maybeFetchIssueContext({ owner, repo, issueNumber, isPr, token: readToken, logger });
+  const styleExamples = await maybeFetchStyleExamples({ login: agentOwner, token: writeToken, logger });
 
-  // Build a universal GitHub reply prompt (single comment output, clean GFM formatting)
-  const richPrompt = buildRichPrompt({
-    accessLevel,
-    isPr,
+  const safeCommand = command || "No explicit request provided. Ask a single clarifying question.";
+  const messages = buildPromptMessages({
+    agentOwner,
+    sender,
     owner,
     repo,
     issueNumber,
-    sender,
-    agentOwner,
-    command,
+    isPr,
+    command: safeCommand,
+    issueContext,
+    styleExamples,
   });
-  const {
-    prompt: fullPrompt,
-    eventJson,
-    contextJson,
-    isMinimal,
-  } = await buildFullPrompt({
-    richPrompt,
-    command,
-    payload,
-    fetchedContext,
-    owner,
-    repo,
-    isSelf,
-    logger,
-  });
-  let prompt = fullPrompt;
 
-  // Prompt-size guard: if prompt exceeds PROMPT_MAX_LEN, fall back to minimal
-  const promptMaxLenRaw = Number(process.env.PROMPT_MAX_LEN || 0);
-  const promptMaxLen = Number.isFinite(promptMaxLenRaw) && promptMaxLenRaw > 0 ? Math.floor(promptMaxLenRaw) : 0;
-  if (!isMinimal && promptMaxLen > 0 && prompt.length > promptMaxLen) {
-    logger.info("[codexAgent] Prompt exceeds PROMPT_MAX_LEN, falling back to minimal", { len: prompt.length, max: promptMaxLen });
-    // minimal prompt is just the user command
-    prompt = command;
-  }
+  const model = getEnvString("UOS_AI_MODEL", "");
+  const request = {
+    ...(model ? { model } : {}),
+    messages,
+  };
 
   try {
-    logPayloadIfEnabled({ logger, payload, eventJson, contextJson, prompt });
-    const editCommentId = shouldPost ? await maybeCreatePlaceholderComment({ logger, isSelf, owner, repo, issueNumber }) : null;
+    const promptText = messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
+    logPromptIfEnabled({ logger, prompt: promptText, payload });
+    await maybeWriteRuntimeLogs({ prompt: promptText, request, payload, logger });
 
-    const body = buildRequestBody({ isMinimal, prompt, timeoutMs, shouldPost, mentionOverride, editCommentId, owner, repo, isPr, issueNumber });
-    logPiBodyIfEnabled({ logger, body });
-    await maybeWriteRuntimeLogs({ prompt, body, payload, logger });
+    const result = await callLlm(request, context);
+    const raw = extractLlmContent(result);
+    const cleaned = sanitizeReply(raw, agentOwner);
+    if (!cleaned) {
+      logger.error("LLM returned empty response");
+      return;
+    }
+    const finalBody = appendReplyMarker(cleaned);
 
-    await invokePiCodex({
-      baseUrl: piBaseUrl,
-      body,
-      timeoutMs,
-      agentOwner: String(agentOwner || ""),
-      logger,
-    });
-    logger.ok(shouldPost ? "Handoff complete; Pi will edit placeholder." : "Read-only invocation completed.");
+    if (!writeToken) {
+      logger.error("Missing PAT for posting reply; set USER_PAT or PAT_FULL");
+      return;
+    }
+
+    await createGithubComment({ owner, repo, issueNumber, body: finalBody, token: writeToken }, logger);
+    logger.ok("Successfully created comment!");
   } catch (error) {
-    logger.error(`Pi Codex error: ${String(error)}`);
+    logger.error(`LLM failure: ${String(error)}`);
   }
 }

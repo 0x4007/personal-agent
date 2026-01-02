@@ -38,13 +38,14 @@ jobs:
       AGENT_OWNER: ${{ github.repository_owner }}
       USER_PAT_FULL: ${{ secrets.PAT_FULL }}
       USER_PAT_READ: ${{ secrets.PAT_READ }}
-      PI_URL: ${{ secrets.PI_URL }}
-      # Cap runtime under Cloudflare's request timeout; Pi still enforces its own timeout.
-      PI_TIMEOUT_MS: 85000
-      # Prompt shaping and visibility for debugging
-      PROMPT_FETCH_LABELS: "1"
+      # LLM config
+      UOS_AI_MODEL: ${{ secrets.UOS_AI_MODEL || 'gpt-5-chat-latest' }}
+      UOS_STYLE_EXAMPLES: "6"
+      UOS_STYLE_LOOKBACK_DAYS: "365"
+      UOS_CONTEXT_FETCH: "1"
+      UOS_STYLE_FETCH: "1"
+      # Prompt visibility for debugging
       LOG_PROMPT: "1"
-      LOG_PI_BODY: "1"
       # Enable writing prompt/body/event files for artifact collection
       WRITE_PROMPT_FILE: "1"
       WRITE_EVENT_FILE: "1"
@@ -52,6 +53,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
       - run: node dist/index.js
       - uses: actions/upload-artifact@v4
         if: always()
