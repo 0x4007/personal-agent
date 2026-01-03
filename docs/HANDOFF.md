@@ -3,7 +3,7 @@
 ## TL;DR
 
 - Compute runs `node dist/index.js` (no installs/builds in compute).
-- The agent calls `ai.ubq.fi` via `@ubiquity-os/plugin-sdk` and posts as the owner using a PAT.
+- The agent calls the LLM via `@ubiquity-os/plugin-sdk` (base URL set by `UOS_AI_BASE_URL`) and posts as the owner using a PAT.
 - Replies include an invisible marker `<!-- pa:ai -->` so we can filter AI output from style examples.
 
 ## Key Files

@@ -1,6 +1,6 @@
 # `@ubiquity-os/personal-agent`
 
-Personal Agent is a UbiquityOS plugin that replies as the repo owner when a comment starts with `@<owner>`. The kernel dispatches a workflow in your fork, the agent calls `ai.ubq.fi` via the plugin SDK, and then posts the reply as you using a PAT.
+Personal Agent is a UbiquityOS plugin that replies as the repo owner when a comment starts with `@<owner>`. The kernel dispatches a workflow in your fork, the agent calls the LLM via the plugin SDK (base URL set by `UOS_AI_BASE_URL`), and then posts the reply as you using a PAT.
 
 ## What It Does
 

@@ -39,6 +39,7 @@ jobs:
       USER_PAT_FULL: ${{ secrets.PAT_FULL }}
       USER_PAT_READ: ${{ secrets.PAT_READ }}
       # LLM config
+      UOS_AI_BASE_URL: "https://ai-ubq-fi.deno.dev"
       UOS_AI_MODEL: ${{ secrets.UOS_AI_MODEL || 'gpt-5-chat-latest' }}
       UOS_STYLE_EXAMPLES: "6"
       UOS_STYLE_LOOKBACK_DAYS: "365"
