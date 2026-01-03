@@ -17,6 +17,7 @@
 ## Env Highlights
 
 - `PAT_FULL` or `USER_PAT` - post replies as the owner.
+- `UOS_AI_BASE_URL` - override LLM base URL (default from workflow).
 - `UOS_AI_MODEL` - optional model override.
 - `UOS_STYLE_EXAMPLES` - number of style examples to embed.
 - `UOS_STYLE_LOOKBACK_DAYS` - history window for style examples.

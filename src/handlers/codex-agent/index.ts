@@ -71,8 +71,10 @@ export async function codexAgent(context: Context): Promise<void> {
   });
 
   const model = getEnvString("UOS_AI_MODEL", "");
+  const baseUrl = getEnvString("UOS_AI_BASE_URL", "") || getEnvString("UOS_AI_URL", "");
   const request = {
     ...(model ? { model } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
     messages,
   };
 
