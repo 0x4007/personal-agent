@@ -22,6 +22,12 @@
 - `UOS_AI_MODEL` - optional model override.
 - `UOS_STYLE_EXAMPLES` - number of style examples to embed.
 - `UOS_STYLE_LOOKBACK_DAYS` - history window for style examples.
+- `UOS_STYLE_EXAMPLE_MAX_CHARS` - truncate each style example body.
+- `UOS_STYLE_CACHE_ISSUE` - issue number used to store cached style examples.
+- `UOS_STYLE_CACHE_REPO` - optional `owner/repo` for the cache issue (defaults to the action repo).
+- `UOS_STYLE_CACHE_TTL_HOURS` - refresh cadence for cached style examples.
+- `UOS_STYLE_CACHE_WRITE` - set `0` to disable cache updates.
+- `UOS_STYLE_CACHE_MARKER` - HTML comment marker label for cached payloads.
 
 ## Notes
 

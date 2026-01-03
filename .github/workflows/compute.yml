@@ -42,8 +42,11 @@ jobs:
       UOS_AI_BASE_URL: "https://ai-ubq-fi.deno.dev"
       UOS_AI_TOKEN: ${{ secrets.UOS_AI_TOKEN }}
       UOS_AI_MODEL: ${{ secrets.UOS_AI_MODEL || 'gpt-5-chat-latest' }}
-      UOS_STYLE_EXAMPLES: "6"
+      UOS_STYLE_EXAMPLES: "20"
       UOS_STYLE_LOOKBACK_DAYS: "365"
+      UOS_STYLE_CACHE_ISSUE: "8"
+      UOS_STYLE_CACHE_TTL_HOURS: "24"
+      UOS_STYLE_CACHE_WRITE: "1"
       UOS_CONTEXT_FETCH: "1"
       UOS_STYLE_FETCH: "1"
       # Prompt visibility for debugging

@@ -35,6 +35,8 @@ The agent fetches recent comments written by the owner and uses them as style ex
 <!-- pa:ai -->
 ```
 
+To avoid hitting GraphQL every run, you can cache style examples in a hidden issue comment by setting `UOS_STYLE_CACHE_ISSUE` (and optionally `UOS_STYLE_CACHE_REPO`). Tune refresh with `UOS_STYLE_CACHE_TTL_HOURS`.
+
 You can override behavior with env vars (see `src/types/env.ts`).
 
 ## Development
