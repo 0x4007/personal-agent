@@ -39826,14 +39826,89 @@ function truncate(value, maxChars) {
   if (value.length <= maxChars) return value;
   return value.slice(0, maxChars).trimEnd() + "...";
 }
-function appendStyleExamples(nodes, examples, limit, marker) {
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function parseBool(value, fallback) {
+  if (!value) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return fallback;
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+function parseOwnerRepo(value) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split("/");
+  if (parts.length < 2) return null;
+  const owner = parts[0].trim();
+  const repo = parts[1].trim();
+  if (!owner || !repo) return null;
+  return { owner, repo };
+}
+function safeJsonParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+function normalizeStyleExamples(raw, maxChars) {
+  if (!Array.isArray(raw)) return [];
+  const max = Math.max(120, Math.min(800, Math.floor(maxChars)));
+  const examples = [];
+  for (const item of raw) {
+    const obj = toObject(item);
+    const bodyRaw = toStringOrUndefined(obj.body);
+    if (!bodyRaw) continue;
+    const normalized = bodyRaw.replace(/\s+/g, " ").trim();
+    if (!normalized) continue;
+    const body = truncate(normalized, max);
+    if (!body) continue;
+    examples.push({
+      body,
+      createdAt: toStringOrUndefined(obj.createdAt) ?? "",
+      url: toStringOrUndefined(obj.url),
+      repo: toStringOrUndefined(obj.repo)
+    });
+  }
+  return examples;
+}
+function getStyleCacheConfig() {
+  const issueRaw = getEnvString2("UOS_STYLE_CACHE_ISSUE");
+  if (!issueRaw) return null;
+  const issueNumber = Math.floor(Number(issueRaw));
+  if (!Number.isFinite(issueNumber) || issueNumber <= 0) return null;
+  const repoRaw = getEnvString2("UOS_STYLE_CACHE_REPO");
+  const repoValue = repoRaw || getEnvString2("GITHUB_REPOSITORY");
+  if (!repoValue) return null;
+  const repo = parseOwnerRepo(repoValue);
+  if (!repo) return null;
+  const markerLabel = getEnvString2("UOS_STYLE_CACHE_MARKER", DEFAULT_STYLE_CACHE_MARKER).trim();
+  if (!markerLabel) return null;
+  const markerRegex = new RegExp(`<!--\\s*${escapeRegExp(markerLabel)}\\s*([\\s\\S]*?)\\s*-->`, "i");
+  const ttlHours = Math.max(1, Math.min(168, Math.floor(getEnvNumber("UOS_STYLE_CACHE_TTL_HOURS", 24) ?? 24)));
+  const shouldWriteCache = parseBool(getEnvString2("UOS_STYLE_CACHE_WRITE", "1"), true);
+  return {
+    owner: repo.owner,
+    repo: repo.repo,
+    issueNumber,
+    markerLabel,
+    markerRegex,
+    ttlMs: ttlHours * 60 * 60 * 1e3,
+    shouldWriteCache
+  };
+}
+function appendStyleExamples(nodes, examples, limit, marker, maxChars) {
   for (const node of nodes) {
     const body = (node?.body ?? "").trim();
     if (!body) continue;
     if (marker && body.includes(marker)) continue;
-    if (body.length < 40) continue;
+    const normalized = body.replace(/\s+/g, " ").trim();
+    if (normalized.length < 40) continue;
+    const trimmed = truncate(normalized, maxChars);
+    if (!trimmed) continue;
     examples.push({
-      body,
+      body: trimmed,
       createdAt: String(node?.createdAt ?? ""),
       url: node?.url,
       repo: node?.repository?.nameWithOwner
@@ -39861,7 +39936,7 @@ async function fetchStylePage(params) {
   };
 }
 async function collectStyleExamples(params) {
-  const { login, from, to, headers, limit, marker, logger } = params;
+  const { login, from, to, headers, limit, marker, maxChars, logger } = params;
   const examples = [];
   let cursor = null;
   let hasNext = true;
@@ -39877,7 +39952,7 @@ async function collectStyleExamples(params) {
       logger
     });
     if (!page) return examples;
-    appendStyleExamples(page.nodes, examples, limit, marker);
+    appendStyleExamples(page.nodes, examples, limit, marker, maxChars);
     hasNext = Boolean(page.pageInfo.hasNextPage);
     cursor = page.pageInfo.endCursor ?? null;
   }
@@ -39972,27 +40047,167 @@ async function fetchIssueContext(params) {
   } : null;
   return { issue: slimIssue, comments: slimComments, pr: slimPr };
 }
+async function fetchIssueComments(params) {
+  const { owner, repo, issueNumber, token, logger } = params;
+  const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100`;
+  const resp = await fetch(url, {
+    method: "GET",
+    headers: buildHeaders(token)
+  });
+  if (!resp.ok) {
+    const txt = await safeText(resp);
+    logger.info("[personalAgent] Style cache read failed (non-fatal)", { status: resp.status, body: txt.slice(0, 500) });
+    return [];
+  }
+  const json = await resp.json();
+  if (!Array.isArray(json)) return [];
+  return json.map((comment) => {
+    const obj = toObject(comment);
+    return {
+      id: toNumber(obj.id),
+      body: toStringOrUndefined(obj.body),
+      created_at: toStringOrUndefined(obj.created_at),
+      updated_at: toStringOrUndefined(obj.updated_at)
+    };
+  });
+}
+function findStyleCacheComment(comments, markerRegex) {
+  for (const comment of comments) {
+    const body = typeof comment.body === "string" ? comment.body : "";
+    if (body && markerRegex.test(body)) return comment;
+  }
+  return null;
+}
+function parseStyleCacheComment(body, markerRegex, maxChars) {
+  const match2 = markerRegex.exec(body);
+  const raw = (match2 ? match2[1] : body).trim();
+  if (!raw) return null;
+  const parsed = safeJsonParse(raw);
+  if (!parsed || typeof parsed !== "object") return null;
+  const obj = toObject(parsed);
+  const examples = normalizeStyleExamples(obj.examples, maxChars);
+  if (!examples.length) return null;
+  return {
+    version: toNumber(obj.version),
+    updatedAt: toStringOrUndefined(obj.updatedAt),
+    login: toStringOrUndefined(obj.login),
+    lookbackDays: toNumber(obj.lookbackDays),
+    limit: toNumber(obj.limit),
+    maxChars: toNumber(obj.maxChars),
+    examples
+  };
+}
+function isStyleCacheUsable(cache, params) {
+  const { login, limit, lookbackDays, ttlMs } = params;
+  if (!cache.updatedAt) return false;
+  const updatedAt = new Date(cache.updatedAt);
+  if (Number.isNaN(updatedAt.getTime())) return false;
+  if (Date.now() - updatedAt.getTime() > ttlMs) return false;
+  if (!cache.login || cache.login.toLowerCase() !== login.toLowerCase()) return false;
+  if (!cache.lookbackDays || cache.lookbackDays !== lookbackDays) return false;
+  if (!cache.limit || cache.limit < limit) return false;
+  return cache.examples.length > 0;
+}
+function buildStyleCacheBody(markerLabel, payload) {
+  return `<!-- ${markerLabel} ${safeStringify(payload)} -->`;
+}
+async function upsertStyleCacheComment(params) {
+  const { owner, repo, issueNumber, commentId, body, token, logger } = params;
+  const headers = buildHeaders(token);
+  if (commentId) {
+    const url2 = `https://api.github.com/repos/${owner}/${repo}/issues/comments/${commentId}`;
+    const resp2 = await fetch(url2, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ body })
+    });
+    if (!resp2.ok) {
+      const txt = await safeText(resp2);
+      logger.info("[personalAgent] Style cache update failed (non-fatal)", { status: resp2.status, body: txt.slice(0, 500) });
+    }
+    return;
+  }
+  const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ body })
+  });
+  if (!resp.ok) {
+    const txt = await safeText(resp);
+    logger.info("[personalAgent] Style cache write failed (non-fatal)", { status: resp.status, body: txt.slice(0, 500) });
+  }
+}
 async function fetchStyleExamples(params) {
   const { login, token, logger } = params;
   if (!token) return [];
-  const limit = Math.max(0, Math.min(20, Math.floor(getEnvNumber("UOS_STYLE_EXAMPLES", 6) ?? 6)));
+  const limit = Math.max(0, Math.min(50, Math.floor(getEnvNumber("UOS_STYLE_EXAMPLES", 12) ?? 12)));
   if (limit === 0) return [];
+  const maxChars = Math.max(120, Math.min(800, Math.floor(getEnvNumber("UOS_STYLE_EXAMPLE_MAX_CHARS", 320) ?? 320)));
   const lookbackDays = Math.max(30, Math.min(3650, Math.floor(getEnvNumber("UOS_STYLE_LOOKBACK_DAYS", 365) ?? 365)));
   const maxDateRaw = getEnvString2("UOS_STYLE_MAX_DATE");
   let maxDate = maxDateRaw ? new Date(maxDateRaw) : /* @__PURE__ */ new Date();
   if (Number.isNaN(maxDate.getTime())) maxDate = /* @__PURE__ */ new Date();
   const from = new Date(maxDate.getTime() - lookbackDays * 24 * 60 * 60 * 1e3);
   const marker = getReplyMarker();
+  const cacheConfig = getStyleCacheConfig();
+  let cacheComment = null;
+  if (cacheConfig) {
+    const comments = await fetchIssueComments({
+      owner: cacheConfig.owner,
+      repo: cacheConfig.repo,
+      issueNumber: cacheConfig.issueNumber,
+      token,
+      logger
+    });
+    cacheComment = findStyleCacheComment(comments, cacheConfig.markerRegex);
+    if (cacheComment?.body) {
+      const cached = parseStyleCacheComment(cacheComment.body, cacheConfig.markerRegex, maxChars);
+      if (cached && isStyleCacheUsable(cached, { login, limit, lookbackDays, ttlMs: cacheConfig.ttlMs })) {
+        logger.info("[personalAgent] Style cache hit", {
+          count: cached.examples.length,
+          issue: `${cacheConfig.owner}/${cacheConfig.repo}#${cacheConfig.issueNumber}`
+        });
+        return cached.examples.slice(0, limit);
+      }
+    }
+  }
   const headers = buildHeaders(token);
-  return collectStyleExamples({
+  const examples = await collectStyleExamples({
     login,
     from,
     to: maxDate,
     headers,
     limit,
     marker,
+    maxChars,
     logger
   });
+  if (cacheConfig?.shouldWriteCache) {
+    const payload = {
+      version: STYLE_CACHE_VERSION,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      login,
+      lookbackDays,
+      limit,
+      maxChars,
+      examples
+    };
+    await upsertStyleCacheComment({
+      owner: cacheConfig.owner,
+      repo: cacheConfig.repo,
+      issueNumber: cacheConfig.issueNumber,
+      commentId: cacheComment?.id,
+      body: buildStyleCacheBody(cacheConfig.markerLabel, payload),
+      token,
+      logger
+    });
+    logger.info("[personalAgent] Style cache updated", {
+      count: examples.length,
+      issue: `${cacheConfig.owner}/${cacheConfig.repo}#${cacheConfig.issueNumber}`
+    });
+  }
+  return examples;
 }
 async function maybeFetchIssueContext(args) {
   const { owner, repo, issueNumber, isPr, token, logger } = args;
@@ -40016,13 +40231,15 @@ async function maybeFetchStyleExamples(args) {
     return [];
   }
 }
-var STYLE_QUERY;
+var STYLE_CACHE_VERSION, DEFAULT_STYLE_CACHE_MARKER, STYLE_QUERY;
 var init_github = __esm({
   "src/handlers/codex-agent/lib/github.ts"() {
     "use strict";
     init_esm_shims();
     init_config();
     init_utils();
+    STYLE_CACHE_VERSION = 1;
+    DEFAULT_STYLE_CACHE_MARKER = "pa:style-cache";
     STYLE_QUERY = `query($login: String!, $from: DateTime!, $to: DateTime!, $cursor: String) {
   user(login: $login) {
     contributionsCollection(from: $from, to: $to) {
