@@ -40256,8 +40256,10 @@ async function codexAgent(context2) {
     styleExamples
   });
   const model = getEnvString2("UOS_AI_MODEL", "");
+  const baseUrl = getEnvString2("UOS_AI_BASE_URL", "") || getEnvString2("UOS_AI_URL", "");
   const request4 = {
     ...model ? { model } : {},
+    ...baseUrl ? { baseUrl } : {},
     messages
   };
   try {
