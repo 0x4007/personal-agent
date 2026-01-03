@@ -40091,14 +40091,70 @@ function stripOwnerMentions(text, owner) {
     return text;
   }
 }
+function splitSentences(text) {
+  return text.split(/(?<=[.!?])\s+/).filter(Boolean);
+}
+function stripToolChatter(text) {
+  const hasNewlines = text.includes("\n");
+  const parts = hasNewlines ? text.split("\n") : splitSentences(text);
+  let hasRemoved = false;
+  const kept = parts.filter((part) => {
+    const line = part.trim();
+    if (!line) return false;
+    if (META_LABEL_RE.test(line)) {
+      hasRemoved = true;
+      return false;
+    }
+    if (FILLER_LINE_RE.test(line)) {
+      hasRemoved = true;
+      return false;
+    }
+    if (TOOL_MARKER_RE.test(line)) {
+      hasRemoved = true;
+      return false;
+    }
+    if (META_ACTION_RE.test(line) && META_ACTION_CONTEXT_RE.test(line)) {
+      hasRemoved = true;
+      return false;
+    }
+    return true;
+  });
+  return {
+    text: kept.join(hasNewlines ? "\n" : " ").trim(),
+    hadToolChatter: hasRemoved
+  };
+}
+function extractAssistantSegment(text) {
+  const match2 = /(?:^|\n)\s*assistant:\s*/gi;
+  let lastIndex = -1;
+  let m;
+  while (m = match2.exec(text)) {
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex === -1) return { text, hadTranscript: false };
+  return { text: text.slice(lastIndex).trim(), hadTranscript: true };
+}
+function limitToLastSentences(text, count) {
+  const sentences = splitSentences(text);
+  if (sentences.length <= count) return text;
+  return sentences.slice(-count).join(" ").trim();
+}
 function sanitizeReply(raw, owner) {
   const marker = getReplyMarker();
   let out = String(raw || "").replace(/\r\n/g, "\n").trim();
   if (!out) return "";
   if (marker) out = out.replace(marker, "").trim();
+  const assistantSegment = extractAssistantSegment(out);
+  out = assistantSegment.text;
+  const toolStripped = stripToolChatter(out);
+  out = toolStripped.text;
   out = stripLeadingMention(out);
   out = stripOwnerMentions(out, owner);
-  const maxChars = Math.max(200, Math.min(12e3, Math.floor(getEnvNumber("UOS_REPLY_MAX_CHARS", 6e3) ?? 6e3)));
+  if (assistantSegment.hadTranscript || toolStripped.hadToolChatter) {
+    out = limitToLastSentences(out, 2);
+  }
+  const configuredMax = Math.max(200, Math.min(12e3, Math.floor(getEnvNumber("UOS_REPLY_MAX_CHARS", 6e3) ?? 6e3)));
+  const maxChars = Math.min(600, configuredMax);
   if (out.length > maxChars) out = out.slice(0, maxChars).trimEnd() + "...";
   return out.trim();
 }
@@ -40110,11 +40166,17 @@ function appendReplyMarker(body) {
 
 ${marker}`.trim();
 }
+var TOOL_MARKER_RE, META_LABEL_RE, FILLER_LINE_RE, META_ACTION_RE, META_ACTION_CONTEXT_RE;
 var init_output = __esm({
   "src/handlers/codex-agent/lib/output.ts"() {
     "use strict";
     init_esm_shims();
     init_config();
+    TOOL_MARKER_RE = /(multi_tool_use|assistant to=|to=shell|to=functions\.|exec_command|write_stdin|apply_patch|update_plan|tool call|call tool|tools available)/i;
+    META_LABEL_RE = /^(analysis|reasoning|thinking|assistant|system|user|developer|command|action):/i;
+    FILLER_LINE_RE = /^(ok|okay|sure|alright|all right|cool|thanks|great|proceeding|done)\.?$/i;
+    META_ACTION_RE = /\b(i(?:'m| am)? going to|i will|i'll|let's|lets)\b.*\b(run|execute|call|invoke)\b/i;
+    META_ACTION_CONTEXT_RE = /\b(tool|tools|shell|command|rg|grep|ripgrep|ls|cat|git|npm|bun|deno|curl|apply_patch|exec_command|write_stdin|update_plan)\b/i;
   }
 });
 
