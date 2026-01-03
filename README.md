@@ -14,6 +14,7 @@ Personal Agent is a UbiquityOS plugin that replies as the repo owner when a comm
 2. Install the UbiquityOS GitHub App on the repos where you want the agent to run.
 3. Add secrets to your fork:
    - `PAT_FULL` (recommended) or `USER_PAT` for posting as you.
+   - `UOS_AI_TOKEN` if you want to use an ai-ubq-fi API key instead of installation tokens.
 4. (Optional) Set `UOS_AI_MODEL` if you want a specific model.
 
 ## Usage

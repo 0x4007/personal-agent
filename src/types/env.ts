@@ -17,6 +17,7 @@ export const envSchema = T.Object({
   PAT: T.Optional(T.String()),
   PAT_FULL: T.Optional(T.String()),
   PAT_READ: T.Optional(T.String()),
+  UOS_AI_TOKEN: T.Optional(T.String()),
   UOS_AI_BASE_URL: T.Optional(T.String()),
   UOS_AI_URL: T.Optional(T.String()),
   UOS_AI_MODEL: T.Optional(T.String()),

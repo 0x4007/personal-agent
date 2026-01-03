@@ -17,6 +17,7 @@
 ## Env Highlights
 
 - `PAT_FULL` or `USER_PAT` - post replies as the owner.
+- `UOS_AI_TOKEN` - optional API key for `ai-ubq-fi.deno.dev`.
 - `UOS_AI_BASE_URL` - override LLM base URL (default from workflow).
 - `UOS_AI_MODEL` - optional model override.
 - `UOS_STYLE_EXAMPLES` - number of style examples to embed.

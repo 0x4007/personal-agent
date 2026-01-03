@@ -72,6 +72,7 @@ export async function codexAgent(context: Context): Promise<void> {
 
   const model = getEnvString("UOS_AI_MODEL", "");
   const baseUrl = getEnvString("UOS_AI_BASE_URL", "") || getEnvString("UOS_AI_URL", "");
+  const llmToken = getEnvString("UOS_AI_TOKEN", "");
   const request = {
     ...(model ? { model } : {}),
     ...(baseUrl ? { baseUrl } : {}),
@@ -83,7 +84,8 @@ export async function codexAgent(context: Context): Promise<void> {
     logPromptIfEnabled({ logger, prompt: promptText, payload });
     await maybeWriteRuntimeLogs({ prompt: promptText, request, payload, logger });
 
-    const result = await callLlm(request, context);
+    const llmContext = llmToken ? { ...context, authToken: llmToken } : context;
+    const result = await callLlm(request, llmContext);
     const raw = extractLlmContent(result);
     const cleaned = sanitizeReply(raw, agentOwner);
     if (!cleaned) {
