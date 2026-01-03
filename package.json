@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
-    "bundle": "tsup --entry.index=src/index.ts --format esm --platform node --target node22 --sourcemap --out-dir dist --clean --no-splitting",
+    "bundle": "tsup --config tsup.config.ts",
     "dev:local": "NODE_ENV=local bun scripts/local-run.ts",
     "dev:pi": "REAL_PI=1 NODE_ENV=local AGENT_OWNER=0x4007 OWNER=ubiquity REPO=.github-private ISSUE=23 BODY='@0x4007 local to pi' bun scripts/local-run.ts",
     "pi:setup": "scripts/pi-git.sh setup",
