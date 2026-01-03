@@ -40257,6 +40257,7 @@ async function codexAgent(context2) {
   });
   const model = getEnvString2("UOS_AI_MODEL", "");
   const baseUrl = getEnvString2("UOS_AI_BASE_URL", "") || getEnvString2("UOS_AI_URL", "");
+  const llmToken = getEnvString2("UOS_AI_TOKEN", "");
   const request4 = {
     ...model ? { model } : {},
     ...baseUrl ? { baseUrl } : {},
@@ -40266,7 +40267,8 @@ async function codexAgent(context2) {
     const promptText = messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
     logPromptIfEnabled({ logger, prompt: promptText, payload });
     await maybeWriteRuntimeLogs({ prompt: promptText, request: request4, payload, logger });
-    const result = await callLlm(request4, context2);
+    const llmContext = llmToken ? { ...context2, authToken: llmToken } : context2;
+    const result = await callLlm(request4, llmContext);
     const raw = extractLlmContent(result);
     const cleaned = sanitizeReply(raw, agentOwner);
     if (!cleaned) {
