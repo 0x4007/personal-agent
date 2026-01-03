@@ -3,31 +3,30 @@
 ## TL;DR
 
 - Compute runs `node dist/index.js` (no installs/builds in compute).
-- The agent calls the LLM via `@ubiquity-os/plugin-sdk` (base URL set by `UOS_AI_BASE_URL`) and posts as the owner using a PAT.
-- Replies include an invisible marker `<!-- pa:ai -->` so we can filter AI output from style examples.
+- The agent is a thin client: it builds a prompt + context and calls your kernel/PI server at `/api/codex`.
+- The kernel posts the final reply via `gh`; the action only creates a placeholder comment.
 
 ## Key Files
 
-- `src/handlers/codex-agent/index.ts` - main handler (LLM call + posting).
-- `src/handlers/codex-agent/lib/prompt.ts` - prompt builder (voice + context).
-- `src/handlers/codex-agent/lib/github.ts` - GitHub fetch + style examples.
+- `src/handlers/codex-agent/index.ts` - main handler (kernel/PI handoff).
+- `src/handlers/codex-agent/lib/prompt.ts` - prompt builder (context shaping).
+- `src/handlers/codex-agent/lib/github.ts` - GitHub prefetch + placeholder comment.
+- `src/handlers/codex-agent/lib/pi.ts` - `/api/codex` client.
 - `src/index.ts` - minimal Actions runner (decodes inputs).
 - `.github/workflows/compute.yml` - runs `node dist/index.js` only.
 
 ## Env Highlights
 
-- `PAT_FULL` or `USER_PAT` - post replies as the owner.
-- `UOS_AI_TOKEN` - optional API key for `ai-ubq-fi.deno.dev`.
-- `UOS_AI_BASE_URL` - override LLM base URL (default from workflow).
-- `UOS_AI_MODEL` - optional model override.
-- `UOS_STYLE_EXAMPLES` - number of style examples to embed.
-- `UOS_STYLE_LOOKBACK_DAYS` - history window for style examples.
-- `UOS_STYLE_EXAMPLE_MAX_CHARS` - truncate each style example body.
-- `UOS_STYLE_CACHE_ISSUE` - issue number used to store cached style examples.
-- `UOS_STYLE_CACHE_REPO` - optional `owner/repo` for the cache issue (defaults to the action repo).
-- `UOS_STYLE_CACHE_TTL_HOURS` - refresh cadence for cached style examples.
-- `UOS_STYLE_CACHE_WRITE` - set `0` to disable cache updates.
-- `UOS_STYLE_CACHE_MARKER` - HTML comment marker label for cached payloads.
+- `PAT_FULL` or `USER_PAT` - create placeholder comments as the owner.
+- `PI_URL` / `KERNEL_URL` - base URL for the kernel server (e.g., `https://kernel.pavlovcik.com`).
+- `PI_TIMEOUT_MS` - timeout forwarded to `/api/codex`.
+- `PI_MENTION` - set `false` to suppress @mentions in replies.
+- `PI_MINIMAL` - set `1` to send only the raw command as the prompt.
+- `PROMPT_FETCH_ISSUE` - prefetch issue/PR context (default on).
+- `PROMPT_FETCH_LABELS` - prefetch repo labels (default off).
+- `PROMPT_INCLUDE_EVENT` - include full webhook JSON in the prompt.
+- `PROMPT_STRIP_URLS` - remove `*_url` fields from event/context.
+- `PROMPT_MAX_LEN` - guardrail to fall back to minimal prompt if too large.
 
 ## Notes
 

@@ -1,21 +1,21 @@
 # `@ubiquity-os/personal-agent`
 
-Personal Agent is a UbiquityOS plugin that replies as the repo owner when a comment starts with `@<owner>`. The kernel dispatches a workflow in your fork, the agent calls the LLM via the plugin SDK (base URL set by `UOS_AI_BASE_URL`), and then posts the reply as you using a PAT.
+Personal Agent is a UbiquityOS plugin that routes `@<owner>` mentions to your kernel/PI server. The kernel dispatches a workflow in your fork, the agent builds a prompt + context, calls your server at `/api/codex`, and the server posts the reply as you using `gh`.
 
 ## What It Does
 
 - Any issue comment that starts with `@username` triggers the agent.
-- The agent pulls issue context and a few of your recent comments to mimic your voice.
-- It replies as you (using a PAT) and appends an invisible marker so AI outputs are easy to filter later.
+- The agent optionally prefetches issue/PR context and forwards a structured prompt to your kernel server.
+- The kernel runs the agentic workflow and posts the final reply via `gh`.
 
 ## Setup
 
 1. Fork this repo as `personal-agent` under your account.
 2. Install the UbiquityOS GitHub App on the repos where you want the agent to run.
 3. Add secrets to your fork:
-   - `PAT_FULL` (recommended) or `USER_PAT` for posting as you.
-   - `UOS_AI_TOKEN` if you want to use an ai-ubq-fi API key instead of installation tokens.
-4. (Optional) Set `UOS_AI_MODEL` if you want a specific model.
+   - `PAT_FULL` (recommended) or `USER_PAT` for creating placeholder comments.
+4. Set `PI_URL` (or `KERNEL_URL`) in `.github/workflows/compute.yml` to your kernel server (e.g., `https://kernel.pavlovcik.com`).
+5. (Optional) Set `PI_MENTION=false` to avoid @mention prefixes in replies.
 
 ## Usage
 
@@ -26,16 +26,6 @@ Comment in any repo where UbiquityOS is installed:
 ```
 
 Replace `username` with the account that owns the fork. The agent will reply as that user.
-
-## Voice & Style
-
-The agent fetches recent comments written by the owner and uses them as style examples. To keep AI outputs out of the style pool, the agent appends this marker to its own replies:
-
-```
-<!-- pa:ai -->
-```
-
-To avoid hitting GraphQL every run, you can cache style examples in a hidden issue comment by setting `UOS_STYLE_CACHE_ISSUE` (and optionally `UOS_STYLE_CACHE_REPO`). Tune refresh with `UOS_STYLE_CACHE_TTL_HOURS`.
 
 You can override behavior with env vars (see `src/types/env.ts`).
 
@@ -50,4 +40,4 @@ You can override behavior with env vars (see `src/types/env.ts`).
 
 - The compute workflow runs the committed `dist/index.js` only (no installs/builds in compute).
 - The kernel dispatch must pass a real installation token (see kernel `callPersonalAgent`).
-- If you want to allow posting as the GitHub App when no PAT is set, add `UOS_ALLOW_APP_POST=1` to the workflow env.
+- Posting is handled by your kernel/PI server via `gh`, not by the action itself.

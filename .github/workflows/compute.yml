@@ -38,17 +38,14 @@ jobs:
       AGENT_OWNER: ${{ github.repository_owner }}
       USER_PAT_FULL: ${{ secrets.PAT_FULL }}
       USER_PAT_READ: ${{ secrets.PAT_READ }}
-      # LLM config
-      UOS_AI_BASE_URL: "https://ai-ubq-fi.deno.dev"
-      UOS_AI_TOKEN: ${{ secrets.UOS_AI_TOKEN }}
-      UOS_AI_MODEL: ${{ secrets.UOS_AI_MODEL || 'gpt-5-chat-latest' }}
-      UOS_STYLE_EXAMPLES: "20"
-      UOS_STYLE_LOOKBACK_DAYS: "365"
-      UOS_STYLE_CACHE_ISSUE: "8"
-      UOS_STYLE_CACHE_TTL_HOURS: "24"
-      UOS_STYLE_CACHE_WRITE: "1"
-      UOS_CONTEXT_FETCH: "1"
-      UOS_STYLE_FETCH: "1"
+      # Kernel/PI client config
+      PI_URL: "https://kernel.pavlovcik.com"
+      PI_TIMEOUT_MS: "900000"
+      PI_MENTION: "false"
+      PROMPT_FETCH_ISSUE: "1"
+      PROMPT_FETCH_LABELS: "0"
+      PROMPT_INCLUDE_EVENT: "0"
+      PROMPT_STRIP_URLS: "1"
       # Prompt visibility for debugging
       LOG_PROMPT: "1"
       # Enable writing prompt/body/event files for artifact collection
