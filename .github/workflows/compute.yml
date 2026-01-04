@@ -44,6 +44,7 @@ jobs:
       PI_MENTION: "false"
       PROMPT_FETCH_ISSUE: "1"
       PROMPT_FETCH_LABELS: "0"
+      PROMPT_FETCH_STYLE: "1"
       PROMPT_INCLUDE_EVENT: "0"
       PROMPT_STRIP_URLS: "1"
       # Prompt visibility for debugging

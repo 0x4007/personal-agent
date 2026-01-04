@@ -1,7 +1,7 @@
 import { Context } from "../../types";
 import { parseMentionEnv } from "./lib/config";
 import { buildRichPrompt, buildFullPrompt } from "./lib/prompt";
-import { maybePrefetchContext, maybeCreatePlaceholderComment } from "./lib/github";
+import { maybePrefetchContext, maybeCreatePlaceholderComment, maybeFetchStyleExamples } from "./lib/github";
 import { buildRequestBody, logPiBodyIfEnabled, invokePiCodex } from "./lib/pi";
 import { logPayloadIfEnabled, maybeWriteRuntimeLogs } from "./lib/logs";
 
@@ -57,11 +57,13 @@ export async function codexAgent(context: Context): Promise<void> {
   const shouldPost = isSelf;
   const mentionOverride = parseMentionEnv(process.env.PI_MENTION);
 
+  const isMinimalEnv = process.env.PI_MINIMAL === "1";
   // Optionally prefetch GitHub context (issue/PR + comments) using the PAT
   const fetchedContext = await maybePrefetchContext({ logger, isSelf, owner, repo, issueNumber, isPr });
   // No fast paths: always go through Codex (generalized system)
 
   // Build a universal GitHub reply prompt (single comment output, clean GFM formatting)
+  const styleExamples = isMinimalEnv ? [] : await maybeFetchStyleExamples({ login: agentOwner, logger });
   const richPrompt = buildRichPrompt({
     accessLevel,
     isPr,
@@ -71,6 +73,7 @@ export async function codexAgent(context: Context): Promise<void> {
     sender,
     agentOwner,
     command,
+    styleExamples,
   });
   const {
     prompt: fullPrompt,

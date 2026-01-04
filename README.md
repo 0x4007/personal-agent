@@ -16,6 +16,9 @@ Personal Agent is a UbiquityOS plugin that routes `@<owner>` mentions to your ke
    - `PAT_FULL` (recommended) or `USER_PAT` for creating placeholder comments.
 4. Set `PI_URL` (or `KERNEL_URL`) in `.github/workflows/compute.yml` to your kernel server (e.g., `https://kernel.pavlovcik.com`).
 5. (Optional) Set `PI_MENTION=false` to avoid @mention prefixes in replies.
+6. (Optional) Configure style examples from your own comments:
+   - `PROMPT_FETCH_STYLE=1` (default on).
+   - `PROMPT_STYLE_CACHE_ISSUE` (and optional `PROMPT_STYLE_CACHE_REPO`) to cache style examples in a GitHub issue comment.
 
 ## Usage
 

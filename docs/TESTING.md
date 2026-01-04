@@ -37,9 +37,11 @@ gh run download <run_id> -R 0x4007/personal-agent -n runtime-logs-<run_id> -D /t
 - `WRITE_PROMPT_FILE=1` - write prompt and request files to artifacts.
 - `WRITE_EVENT_FILE=1` - include decoded event payload.
 - `LOG_PI_BODY=1` - log the `/api/codex` request body.
+- `PROMPT_FETCH_STYLE=0` - disable style example fetches when debugging.
 
 ## Common Pitfalls
 
 - The comment must start with `@0x4007`.
 - If no reply posts, confirm `PI_URL` is reachable and the kernel is running.
 - If placeholders fail, confirm `PAT_FULL` or `USER_PAT` is set.
+- If style feels generic, confirm `PROMPT_FETCH_STYLE=1` and your PAT has access to your comment history.

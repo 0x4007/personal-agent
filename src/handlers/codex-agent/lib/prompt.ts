@@ -1,6 +1,18 @@
-import { fetchRepoLabels } from "./github";
+import { fetchRepoLabels, StyleExample } from "./github";
 import { selectPatToken } from "./config";
 import { safeStringify, stripUrlFields } from "./utils";
+
+function formatStyleExamples(examples: StyleExample[], agentOwner: string): string {
+  if (!examples.length) return "";
+  const lines = examples.map((example) => {
+    const meta: string[] = [];
+    if (example.repo) meta.push(example.repo);
+    if (example.createdAt) meta.push(example.createdAt.slice(0, 10));
+    const prefix = meta.length ? `(${meta.join(", ")}) ` : "";
+    return `- ${prefix}${example.body}`;
+  });
+  return `Writing style samples from @${agentOwner} (for tone only; do not quote verbatim):\n${lines.join("\n")}`;
+}
 
 export function buildRichPrompt(args: {
   accessLevel: string;
@@ -11,15 +23,18 @@ export function buildRichPrompt(args: {
   sender?: string;
   agentOwner: string;
   command: string;
+  styleExamples?: StyleExample[];
 }): string {
-  const { accessLevel, isPr, owner, repo, issueNumber, sender, agentOwner, command } = args;
+  const { accessLevel, isPr, owner, repo, issueNumber, sender, agentOwner, command, styleExamples } = args;
+  const styleBlock = formatStyleExamples(styleExamples ?? [], agentOwner);
   const base = `
   [mode:${accessLevel}] [type:${isPr ? "pr" : "issue"}] repo:${owner}/${repo} ${isPr ? "pr" : "issue"}:${issueNumber} actor:${sender}
   Environment: Linux shell with GitHub CLI (gh) available and authenticated as @${agentOwner}.
   You are a GitHub assistant. You always return a single GitHub comment (no preamble, no wrappers).
+  You are ${agentOwner}. Write in ${agentOwner}'s voice and perspective.
 
   User request:
-  ${command}
+  ${command}${styleBlock ? "\n\n" + styleBlock : ""}
 
   Output Contract:
   - Output only the final comment text to post on GitHub.
