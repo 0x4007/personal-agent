@@ -546,12 +546,12 @@ jobs:
                 stats.input_image += 1;
                 continue;
               }
-              if (type === "function_call") {
+              if (type === "function_call" || type === "custom_tool_call") {
                 normalized.push(toMessage(buildToolCallText(item)));
                 stats.function_call += 1;
                 continue;
               }
-              if (type === "function_call_output") {
+              if (type === "function_call_output" || type === "custom_tool_call_output") {
                 normalized.push(toMessage(buildToolOutputText(item)));
                 stats.function_call_output += 1;
                 continue;
@@ -1257,12 +1257,12 @@ jobs:
                 stats.input_image += 1;
                 continue;
               }
-              if (type === "function_call") {
+              if (type === "function_call" || type === "custom_tool_call") {
                 normalized.push(toMessage(buildToolCallText(item)));
                 stats.function_call += 1;
                 continue;
               }
-              if (type === "function_call_output") {
+              if (type === "function_call_output" || type === "custom_tool_call_output") {
                 normalized.push(toMessage(buildToolOutputText(item)));
                 stats.function_call_output += 1;
                 continue;
@@ -2128,12 +2128,12 @@ jobs:
                 stats.input_image += 1;
                 continue;
               }
-              if (type === "function_call") {
+              if (type === "function_call" || type === "custom_tool_call") {
                 normalized.push(toMessage(buildToolCallText(item)));
                 stats.function_call += 1;
                 continue;
               }
-              if (type === "function_call_output") {
+              if (type === "function_call_output" || type === "custom_tool_call_output") {
                 normalized.push(toMessage(buildToolOutputText(item)));
                 stats.function_call_output += 1;
                 continue;
@@ -3339,12 +3339,12 @@ jobs:
                 stats.input_image += 1;
                 continue;
               }
-              if (type === "function_call") {
+              if (type === "function_call" || type === "custom_tool_call") {
                 normalized.push(toMessage(buildToolCallText(item)));
                 stats.function_call += 1;
                 continue;
               }
-              if (type === "function_call_output") {
+              if (type === "function_call_output" || type === "custom_tool_call_output") {
                 normalized.push(toMessage(buildToolOutputText(item)));
                 stats.function_call_output += 1;
                 continue;
