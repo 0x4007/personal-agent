@@ -3,6 +3,7 @@ import { isIssueCommentEvent } from "./types/typeguards";
 import fs from "node:fs";
 import { brotliDecompressSync } from "node:zlib";
 import { customOctokit } from "@ubiquity-os/plugin-sdk/octokit";
+import { selectWriteToken } from "./handlers/codex-agent/lib/config";
 
 type CodexAgent = typeof import("./handlers/codex-agent") extends { codexAgent: infer Fn } ? Fn : never;
 
@@ -99,8 +100,12 @@ async function mainFromActionsEnv() {
       info: (...args: unknown[]) => void;
       ok: (msg: unknown, meta?: Record<string, unknown>) => LogReturn;
       error: (msg: unknown, meta?: Record<string, unknown>) => LogReturn;
+      debug: (...args: unknown[]) => void;
+      warn: (...args: unknown[]) => void;
     } = {
       info: (...args: unknown[]) => console.log("[info]", ...args),
+      debug: (...args: unknown[]) => console.log("[debug]", ...args),
+      warn: (...args: unknown[]) => console.warn("[warn]", ...args),
       ok: (msg: unknown, meta?: Record<string, unknown>) => {
         console.log("[ok]", msg, meta || "");
         return {
@@ -117,14 +122,16 @@ async function mainFromActionsEnv() {
       },
     };
 
-    const octokit = new customOctokit({ auth: authToken || undefined });
+    const writeToken = selectWriteToken();
+    const effectiveToken = writeToken || authToken;
+    const octokit = new customOctokit({ auth: effectiveToken || undefined });
     const context: Record<string, unknown> = {
       eventName,
       payload,
       env: process.env,
       logger,
       commentHandler: { postComment: async () => null },
-      authToken,
+      authToken: effectiveToken,
       ubiquityKernelToken,
       config,
       command,

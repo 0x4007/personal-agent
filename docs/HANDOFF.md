@@ -11,6 +11,9 @@
 - `src/handlers/codex-agent/index.ts` - main handler (prompt + agent dispatch).
 - `src/handlers/codex-agent/lib/prompt.ts` - prompt builder (tone + output contract).
 - `src/handlers/codex-agent/lib/github.ts` - style example retrieval.
+- `src/handlers/codex-agent/lib/conversation-graph.ts` - conversation key resolution + graph links.
+- `src/handlers/codex-agent/lib/conversation-context.ts` - linked/semantic context builder.
+- `src/handlers/codex-agent/lib/agent-memory.ts` - KV-backed agent memory snippets.
 - `src/handlers/codex-agent/lib/agent-dispatch.ts` - workflow dispatch helper.
 - `src/index.ts` - minimal Actions runner (decodes inputs).
 - `.github/workflows/compute.yml` - runs `node dist/index.js` only.
@@ -34,6 +37,7 @@
 - `PROMPT_STYLE_CACHE_WRITE` - set `0` to disable cache updates.
 - `PROMPT_STYLE_CACHE_MARKER` - HTML comment marker label for cached payloads.
 - `UOS_VECTOR_DB_URL` / `UOS_VECTOR_DB_KEY` - Supabase REST config for vector DB style examples (or `SUPABASE_URL` + `SUPABASE_*_KEY`).
+- `UOS_AGENT_MEMORY_URL` / `UOS_AGENT_MEMORY_KEY` - KV endpoint + AES key for agent memory (optional).
 - `PROMPT_MAX_LEN` - guardrail to fall back to minimal prompt if too large.
 - `LOG_PROMPT` - log the full prompt in workflow logs.
 - `WRITE_PROMPT_FILE` / `WRITE_EVENT_FILE` - write prompt/event files to artifacts.

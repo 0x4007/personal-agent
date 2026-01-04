@@ -46,6 +46,8 @@ jobs:
       PROMPT_STYLE_SOURCE: "vector-db"
       UOS_VECTOR_DB_URL: ${{ secrets.UOS_VECTOR_DB_URL }}
       UOS_VECTOR_DB_KEY: ${{ secrets.UOS_VECTOR_DB_KEY }}
+      UOS_AGENT_MEMORY_URL: ${{ secrets.UOS_AGENT_MEMORY_URL }}
+      UOS_AGENT_MEMORY_KEY: ${{ secrets.UOS_AGENT_MEMORY_KEY }}
       # Prompt visibility for debugging
       LOG_PROMPT: "1"
       # Enable writing prompt/body/event files for artifact collection

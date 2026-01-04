@@ -1,6 +1,9 @@
 import { Context } from "../../types";
 import { buildRichPrompt } from "./lib/prompt";
 import { maybeFetchStyleExamples } from "./lib/github";
+import { getAgentMemorySnippet } from "./lib/agent-memory";
+import { buildConversationContext } from "./lib/conversation-context";
+import { resolveConversationKeyForContext } from "./lib/conversation-graph";
 import { dispatchAgentWorkflow } from "./lib/agent-dispatch";
 import { logPayloadIfEnabled, maybeWriteRuntimeLogs } from "./lib/logs";
 
@@ -11,6 +14,7 @@ import { logPayloadIfEnabled, maybeWriteRuntimeLogs } from "./lib/logs";
  * - AGENT_OWNER: GitHub username to match @mention
  * - UOS_AGENT_OWNER/UOS_AGENT_REPO/UOS_AGENT_WORKFLOW: target agent workflow to dispatch
  */
+// eslint-disable-next-line sonarjs/cognitive-complexity
 export async function codexAgent(context: Context): Promise<void> {
   const { logger, payload, env } = context;
 
@@ -76,6 +80,27 @@ export async function codexAgent(context: Context): Promise<void> {
     task = command;
   }
 
+  let conversationContext = "";
+  let conversationKey = "";
+  let agentMemory = "";
+  try {
+    const conversation = await resolveConversationKeyForContext(context, logger);
+    if (conversation) {
+      conversationKey = conversation.key;
+      conversationContext = await buildConversationContext({
+        context,
+        conversation,
+        maxItems: 8,
+        maxChars: 3200,
+        query: command,
+        shouldUseSelector: false,
+      });
+    }
+    agentMemory = await getAgentMemorySnippet({ owner, repo, scopeKey: conversationKey || undefined, logger });
+  } catch (error) {
+    logger.info("[codexAgent] Conversation context build failed (non-fatal)", { error: String(error) });
+  }
+
   try {
     const shouldDispatch = String(process.env.UOS_AGENT_DISPATCH ?? env.UOS_AGENT_DISPATCH ?? "1").trim() !== "0";
     if (!shouldDispatch) {
@@ -83,7 +108,16 @@ export async function codexAgent(context: Context): Promise<void> {
       logger.info("[agent] Dispatch disabled via UOS_AGENT_DISPATCH=0.");
       return;
     }
-    const { inputs } = await dispatchAgentWorkflow({ context, task, logger });
+    const { inputs } = await dispatchAgentWorkflow({
+      context,
+      task,
+      logger,
+      settingsOverrides: {
+        ...(agentMemory ? { agentMemory } : {}),
+        ...(conversationContext ? { conversationContext } : {}),
+        ...(conversationKey ? { conversationKey } : {}),
+      },
+    });
     logPayloadIfEnabled({ logger, payload, task, inputs });
     await maybeWriteRuntimeLogs({ task, inputs, payload, logger });
     logger.ok("Agent workflow dispatch complete.");

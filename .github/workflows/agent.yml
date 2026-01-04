@@ -433,7 +433,7 @@ jobs:
           NODE
 
       - name: Start ai.ubq.fi Responses forwarder
-        if: steps.parse.outputs.allowed == 'true'
+        if: false
         continue-on-error: true
         env:
           AUTH_TOKEN: ${{ secrets.UOS_AI_USER_TOKEN }}
@@ -604,7 +604,7 @@ jobs:
           exit 1
 
       - name: Run Codex (planner)
-        if: steps.parse.outputs.allowed == 'true'
+        if: false
         continue-on-error: true
         uses: openai/codex-action@v1
         with:
@@ -630,114 +630,15 @@ jobs:
           node <<'NODE'
           const fs = require("node:fs");
 
-          const defaultMatrix = {
+          const parsed = {
+            mode: "single",
+            reason: "matrix disabled",
+            agents: [],
+            apply_order: [],
+          };
+          const matrix = {
             include: [{ agent_id: "noop", agent_title: "noop", task: "", allowed_paths_json: "[]" }],
           };
-          const defaultPlan = { mode: "single", reason: "planner unavailable", agents: [], apply_order: [] };
-          const allowed = String(process.env.ALLOWED || "") === "true";
-          const privileged = String(process.env.PRIVILEGED || "") === "true";
-          const dryRunForceMatrix = String(process.env.DRY_RUN_FORCE_MATRIX || "") === "true";
-
-          const readPlan = () => {
-            if (!fs.existsSync(".codex.plan.output.md")) return null;
-            const raw = fs.readFileSync(".codex.plan.output.md", "utf8").trim();
-            if (!raw) return null;
-            const start = raw.indexOf("{");
-            const end = raw.lastIndexOf("}");
-            const jsonText = start >= 0 && end >= 0 ? raw.slice(start, end + 1) : raw;
-            try {
-              return JSON.parse(jsonText);
-            } catch {
-              return null;
-            }
-          };
-
-          const sanitizePlan = (input) => {
-            const plan = input && typeof input === "object" ? input : {};
-            let mode = plan.mode === "matrix" ? "matrix" : "single";
-            const rawAgents = Array.isArray(plan.agents) ? plan.agents : [];
-            const agents = [];
-            const seen = new Set();
-
-            for (const entry of rawAgents) {
-              if (!entry || typeof entry !== "object") continue;
-              const id = typeof entry.id === "string" ? entry.id.trim() : "";
-              const task = typeof entry.task === "string" ? entry.task.trim() : "";
-              const title = typeof entry.title === "string" ? entry.title.trim() : "";
-              const allowedPaths = Array.isArray(entry.allowed_paths)
-                ? entry.allowed_paths.map((p) => (typeof p === "string" ? p.trim() : "")).filter(Boolean)
-                : [];
-              if (!id || seen.has(id) || !task || allowedPaths.length === 0) continue;
-              seen.add(id);
-              agents.push({
-                id,
-                title,
-                task,
-                allowed_paths: allowedPaths,
-                depends_on: Array.isArray(entry.depends_on)
-                  ? entry.depends_on.map((d) => (typeof d === "string" ? d.trim() : "")).filter(Boolean)
-                  : [],
-              });
-              if (agents.length >= 4) break;
-            }
-
-            const normalizePath = (value) => value.replace(/^\.?\//, "").replace(/\\/g, "/");
-            const hasOverlap = (() => {
-              const seen = [];
-              for (const agent of agents) {
-                for (const rawPath of agent.allowed_paths || []) {
-                  const pathValue = normalizePath(String(rawPath || ""));
-                  if (!pathValue) continue;
-                  for (const existing of seen) {
-                    const existingWithSlash = existing.endsWith("/") ? existing : `${existing}/`;
-                    const pathWithSlash = pathValue.endsWith("/") ? pathValue : `${pathValue}/`;
-                    if (pathValue === existing || pathValue.startsWith(existingWithSlash) || existing.startsWith(pathWithSlash)) {
-                      return true;
-                    }
-                  }
-                  seen.push(pathValue);
-                }
-              }
-              return false;
-            })();
-
-            if (mode === "matrix" && (!allowed || !privileged || agents.length === 0 || hasOverlap)) {
-              mode = "single";
-              agents.length = 0;
-            }
-
-            if (dryRunForceMatrix && allowed && privileged && agents.length > 0) {
-              mode = "matrix";
-            }
-
-            const idSet = new Set(agents.map((a) => a.id));
-            let applyOrder = Array.isArray(plan.apply_order)
-              ? plan.apply_order.map((id) => (typeof id === "string" ? id.trim() : "")).filter((id) => idSet.has(id))
-              : [];
-            if (applyOrder.length === 0) {
-              applyOrder = agents.map((a) => a.id);
-            }
-
-            return {
-              mode,
-              reason: typeof plan.reason === "string" ? plan.reason.trim() : "",
-              agents,
-              apply_order: applyOrder,
-            };
-          };
-
-          const parsed = sanitizePlan(readPlan() || defaultPlan);
-          const matrix =
-            parsed.mode === "matrix"
-              ? {
-                  include: parsed.agents.map((agent) => ({
-                    agent_id: agent.id,
-                    agent_title: agent.title || agent.id,
-                    task: agent.task,
-                    allowed_paths_json: JSON.stringify(agent.allowed_paths || []),
-                  })),
-                }
-              : defaultMatrix;
 
           const outputs = [];
           const setOutput = (k, v) => outputs.push(`${k}<<EOF\n${String(v)}\nEOF\n`);

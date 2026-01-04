@@ -84,7 +84,7 @@ async function getDefaultBranch(context: Context, owner: string, repo: string): 
   return response.data.default_branch;
 }
 
-function buildAgentSettings(context: Context): Record<string, unknown> {
+function buildAgentSettings(context: Context, overrides?: Record<string, unknown>): Record<string, unknown> {
   const environment = String((context.env as Record<string, unknown>).ENVIRONMENT || process.env.ENVIRONMENT || "").trim();
   const settings: Record<string, unknown> = {};
   if (environment) {
@@ -94,15 +94,16 @@ function buildAgentSettings(context: Context): Record<string, unknown> {
   if (candidates.length) {
     settings.configPathCandidates = candidates;
   }
-  return settings;
+  return { ...settings, ...(overrides ?? {}) };
 }
 
 export async function dispatchAgentWorkflow(args: {
   context: Context;
   task: string;
   logger: { info: (...a: unknown[]) => void };
+  settingsOverrides?: Record<string, unknown>;
 }): Promise<AgentDispatchResult> {
-  const { context, task, logger } = args;
+  const { context, task, logger, settingsOverrides } = args;
 
   if (!context.octokit) {
     throw new Error("Missing octokit; cannot dispatch workflow.");
@@ -115,7 +116,7 @@ export async function dispatchAgentWorkflow(args: {
   const target = resolveAgentTarget(context.env);
   const ref = target.ref || (await getDefaultBranch(context, target.owner, target.repo));
   const stateId = randomUUID();
-  const settings = buildAgentSettings(context);
+  const settings = buildAgentSettings(context, settingsOverrides);
   const eventPayload = compressString(safeStringify(context.payload ?? {}));
   const command = JSON.stringify({ name: "agent", parameters: { task } });
 
