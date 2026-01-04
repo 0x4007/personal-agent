@@ -1,16 +1,15 @@
 import { Context } from "../../types";
-import { parseMentionEnv } from "./lib/config";
-import { buildRichPrompt, buildFullPrompt } from "./lib/prompt";
-import { maybePrefetchContext, maybeCreatePlaceholderComment, maybeFetchStyleExamples } from "./lib/github";
-import { buildRequestBody, logPiBodyIfEnabled, invokePiCodex } from "./lib/pi";
+import { buildRichPrompt } from "./lib/prompt";
+import { maybeFetchStyleExamples } from "./lib/github";
+import { dispatchAgentWorkflow } from "./lib/agent-dispatch";
 import { logPayloadIfEnabled, maybeWriteRuntimeLogs } from "./lib/logs";
 
 /**
- * Calls the kernel/PI server to run Codex and posts the result back to GitHub.
+ * Dispatches the kernel agent workflow with a prompt customized to the owner.
  *
  * Env requirements (set in the workflow env):
  * - AGENT_OWNER: GitHub username to match @mention
- * - PI_URL or KERNEL_URL: Base URL to the server (e.g., https://kernel.pavlovcik.com)
+ * - UOS_AGENT_OWNER/UOS_AGENT_REPO/UOS_AGENT_WORKFLOW: target agent workflow to dispatch
  */
 export async function codexAgent(context: Context): Promise<void> {
   const { logger, payload, env } = context;
@@ -50,17 +49,7 @@ export async function codexAgent(context: Context): Promise<void> {
     return;
   }
 
-  const kernelBaseUrl = String(process.env.KERNEL_URL || process.env.PI_URL || env.PI_URL || "https://kernel.pavlovcik.com").replace(/\/+$/, "");
-  const timeoutRaw = Number(process.env.PI_TIMEOUT_MS || 900000);
-  const timeoutMs = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? Math.floor(timeoutRaw) : 900000;
-  // Posting policy: only owner triggers posting on the server; non-owner is read-only
-  const shouldPost = isSelf;
-  const mentionOverride = parseMentionEnv(process.env.PI_MENTION);
-
-  const isMinimalEnv = process.env.PI_MINIMAL === "1";
-  // Optionally prefetch GitHub context (issue/PR + comments) using the PAT
-  const fetchedContext = await maybePrefetchContext({ logger, isSelf, owner, repo, issueNumber, isPr });
-  // No fast paths: always go through Codex (generalized system)
+  const isMinimalEnv = process.env.PROMPT_MINIMAL === "1" || process.env.UOS_PROMPT_MINIMAL === "1" || process.env.PI_MINIMAL === "1";
 
   // Build a universal GitHub reply prompt (single comment output, clean GFM formatting)
   const styleExamples = isMinimalEnv ? [] : await maybeFetchStyleExamples({ login: agentOwner, owner, repo, logger });
@@ -75,49 +64,30 @@ export async function codexAgent(context: Context): Promise<void> {
     command,
     styleExamples,
   });
-  const {
-    prompt: fullPrompt,
-    eventJson,
-    contextJson,
-    isMinimal,
-  } = await buildFullPrompt({
-    richPrompt,
-    command,
-    payload,
-    fetchedContext,
-    owner,
-    repo,
-    isSelf,
-    logger,
-  });
-  let prompt = fullPrompt;
+  const isMinimal = isMinimalEnv;
+  let task = isMinimal ? command : richPrompt;
 
-  // Prompt-size guard: if prompt exceeds PROMPT_MAX_LEN, fall back to minimal
+  // Prompt-size guard: if task exceeds PROMPT_MAX_LEN, fall back to minimal
   const promptMaxLenRaw = Number(process.env.PROMPT_MAX_LEN || 0);
   const promptMaxLen = Number.isFinite(promptMaxLenRaw) && promptMaxLenRaw > 0 ? Math.floor(promptMaxLenRaw) : 0;
-  if (!isMinimal && promptMaxLen > 0 && prompt.length > promptMaxLen) {
-    logger.info("[codexAgent] Prompt exceeds PROMPT_MAX_LEN, falling back to minimal", { len: prompt.length, max: promptMaxLen });
+  if (!isMinimal && promptMaxLen > 0 && task.length > promptMaxLen) {
+    logger.info("[codexAgent] Task exceeds PROMPT_MAX_LEN, falling back to minimal", { len: task.length, max: promptMaxLen });
     // minimal prompt is just the user command
-    prompt = command;
+    task = command;
   }
 
   try {
-    logPayloadIfEnabled({ logger, payload, eventJson, contextJson, prompt });
-    const editCommentId = shouldPost ? await maybeCreatePlaceholderComment({ logger, isSelf, owner, repo, issueNumber }) : null;
-
-    const body = buildRequestBody({ isMinimal, prompt, timeoutMs, shouldPost, mentionOverride, editCommentId, owner, repo, isPr, issueNumber });
-    logPiBodyIfEnabled({ logger, body });
-    await maybeWriteRuntimeLogs({ prompt, body, payload, logger });
-
-    await invokePiCodex({
-      baseUrl: kernelBaseUrl,
-      body,
-      timeoutMs,
-      agentOwner: String(agentOwner || ""),
-      logger,
-    });
-    logger.ok(shouldPost ? "Handoff complete; kernel will edit placeholder." : "Read-only invocation completed.");
+    const shouldDispatch = String(process.env.UOS_AGENT_DISPATCH ?? env.UOS_AGENT_DISPATCH ?? "1").trim() !== "0";
+    if (!shouldDispatch) {
+      logPayloadIfEnabled({ logger, payload, task, inputs: {} });
+      logger.info("[agent] Dispatch disabled via UOS_AGENT_DISPATCH=0.");
+      return;
+    }
+    const { inputs } = await dispatchAgentWorkflow({ context, task, logger });
+    logPayloadIfEnabled({ logger, payload, task, inputs });
+    await maybeWriteRuntimeLogs({ task, inputs, payload, logger });
+    logger.ok("Agent workflow dispatch complete.");
   } catch (error) {
-    logger.error(`Kernel codex error: ${String(error)}`);
+    logger.error(`Agent dispatch error: ${String(error)}`);
   }
 }

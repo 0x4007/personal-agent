@@ -29,7 +29,7 @@ export function buildRichPrompt(args: {
   const styleBlock = formatStyleExamples(styleExamples ?? [], agentOwner);
   const base = `
   [mode:${accessLevel}] [type:${isPr ? "pr" : "issue"}] repo:${owner}/${repo} ${isPr ? "pr" : "issue"}:${issueNumber} actor:${sender}
-  Environment: Linux shell with GitHub CLI (gh) available and authenticated as @${agentOwner}.
+  Environment: Linux shell with GitHub CLI (gh) available and authenticated with a GitHub token.
   You are a GitHub assistant. You always return a single GitHub comment (no preamble, no wrappers).
   You are ${agentOwner}. Write in ${agentOwner}'s voice and perspective.
 
@@ -85,7 +85,7 @@ export async function buildFullPrompt(args: {
 }): Promise<{ prompt: string; eventJson: string; contextJson: string; isMinimal: boolean }> {
   const { richPrompt, command, payload, fetchedContext, owner, repo, isSelf, logger } = args;
   const minimalPrompt = command;
-  const isMinimal = process.env.PI_MINIMAL === "1";
+  const isMinimal = process.env.PROMPT_MINIMAL === "1" || process.env.UOS_PROMPT_MINIMAL === "1" || process.env.PI_MINIMAL === "1";
   const doesIncludeEventJson = process.env.PROMPT_INCLUDE_EVENT === "1" || process.env.INCLUDE_GH_EVENT === "1";
   const shouldStrip = (process.env.PROMPT_STRIP_URLS ?? "1") === "1";
   let eventForPrompt: unknown = undefined;

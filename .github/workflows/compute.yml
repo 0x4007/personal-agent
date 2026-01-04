@@ -37,19 +37,15 @@ jobs:
       LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
       AGENT_OWNER: ${{ github.repository_owner }}
       USER_PAT_FULL: ${{ secrets.PAT_FULL }}
-      USER_PAT_READ: ${{ secrets.PAT_READ }}
-      # Kernel/PI client config
-      PI_URL: "https://kernel.pavlovcik.com"
-      PI_TIMEOUT_MS: "900000"
-      PI_MENTION: "false"
-      PROMPT_FETCH_ISSUE: "1"
-      PROMPT_FETCH_LABELS: "0"
+      # Agent workflow target (override via secrets for forks/branches)
+      UOS_AGENT_OWNER: ${{ secrets.UOS_AGENT_OWNER || github.repository_owner }}
+      UOS_AGENT_REPO: ${{ secrets.UOS_AGENT_REPO || github.event.repository.name || 'personal-agent' }}
+      UOS_AGENT_WORKFLOW: ${{ secrets.UOS_AGENT_WORKFLOW || 'agent.yml' }}
+      UOS_AGENT_REF: ${{ secrets.UOS_AGENT_REF || '' }}
       PROMPT_FETCH_STYLE: "1"
       PROMPT_STYLE_SOURCE: "vector-db"
       UOS_VECTOR_DB_URL: ${{ secrets.UOS_VECTOR_DB_URL }}
       UOS_VECTOR_DB_KEY: ${{ secrets.UOS_VECTOR_DB_KEY }}
-      PROMPT_INCLUDE_EVENT: "0"
-      PROMPT_STRIP_URLS: "1"
       # Prompt visibility for debugging
       LOG_PROMPT: "1"
       # Enable writing prompt/body/event files for artifact collection

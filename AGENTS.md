@@ -25,7 +25,7 @@ Rationale: We commit the compiled artifact to ensure zero network waits and sub�
 
 - NEVER build/bundle in development. Local development MUST use Bun to run TS directly.
   - `npm run dev:local` → `bun scripts/local-run.ts`
-  - `npm run dev:pi` → `REAL_PI=1 bun scripts/local-run.ts`
+  - Local harness stubs outbound fetch by default; see `scripts/local-run.ts` for toggles.
   - Do not run `npm run bundle`, `tsup`, `tsc`, or any build locally.
 - Bundling happens automatically in CI only.
   - Auto-bundle workflow (`.github/workflows/bundle-dist.yml`) runs on every push and commits `dist/index.js` and `dist/index.js.map` if changed.
@@ -44,100 +44,52 @@ Local development
 
 - Use Bun to run TypeScript directly; no local bundling.
 - Examples:
-  - `npm run dev:local` → `bun scripts/local-run.ts` (stubbed Pi by default)
-  - `npm run dev:pi` → `REAL_PI=1 bun scripts/local-run.ts` (talks to the Pi)
+  - `npm run dev:local` → `bun scripts/local-run.ts` (stubbed backend by default)
 
 Notes:
 
 - Do not commit any artifacts other than `dist/index.js` and `dist/index.js.map`.
 
-## Tooling (debugging and Pi integration)
+## Tooling (local harness)
 
 - `scripts/local-run.ts` → local harness run directly with Bun.
   - Skips Actions input decoding/compression and calls `runPlugin` directly.
-  - Env: `REAL_PI` toggles real fetch to Pi; `FETCH_TIMEOUT_MS` controls client timeout; `PI_URL` defaults to `http://pi.local:3000`.
-
-- `scripts/pi-git.sh` → Git-based sync on the Raspberry Pi (preferred).
-  - `npm run pi:setup` → clone repo on Pi if missing.
-  - `npm run pi:pull` → fetch/reset to origin for the current branch on Pi.
-  - `npm run pi:run` → run the local harness on the Pi via Bun (REAL_PI=1)
-  - `npm run pi:pull-run` → pull then run
-
-- `scripts/pi-dev.sh` → Pi API probes only (no file sync).
-  - `npm run pi:probe` → probes `/`, `/api`, `/api/codex` with multiple payloads.
-  - `npm run pi:curl` → crafts JSON safely and POSTs via ssh (base64 to avoid quoting issues).
-
-<!-- Pi server operational scripts live in the pi-agent repository. Removed from personal-agent to keep concerns separated. -->
-  - To disable temporarily: `DISABLE_PI_AGENT_SYNC=1 git push`.
+  - Stubs outbound fetch by default; see the script for toggles and timeouts.
 
 ## Posting & Access Control
 
 - Invocation gate: the comment must begin with `@${AGENT_OWNER}` or it is ignored.
-- Who may post replies:
-  - Owner (comment author matches `AGENT_OWNER`, case‑insensitive): compute posts the (sanitized) reply.
-  - Others: read‑only; no posting.
-- Token selection for posting (compute only):
-  - Owner: `PAT_FULL` (exposed to code as `USER_PAT_FULL`).
-  - Others: `PAT_READ` (exposed to code as `USER_PAT_READ`).
-  - Fallbacks (last resorts): `PLUGIN_GITHUB_TOKEN`, then `GITHUB_TOKEN`.
-- Server posting is disabled in requests (we send `post:false`) to avoid any server‑side auto‑mentioning. We also send `mention:false` explicitly to signal “no mention”.
+- The plugin dispatches the agent workflow; it does not post replies itself.
+- Agent replies are posted by the dispatched workflow using `PAT_FULL`/`USER_PAT`.
+- LLM calls in the agent workflow use `UOS_AI_USER_TOKEN` (ai.ubq.fi).
+- Style example reads use `PAT_FULL` (exposed as `USER_PAT_FULL`).
 
-## Loop Prevention & Sanitization
+## Loop Prevention
 
-- We aggressively sanitize the model output before posting:
-  - Strip any `@${AGENT_OWNER}` mentions anywhere to avoid re‑triggering.
-  - Remove transcript/log lines: banners, `OpenAI Codex v…`, separators, `workdir:`, `model:`, `provider:`, `approval:`, `sandbox:`, `reasoning…`, timestamps, `thinking`, `codex`, shell exec lines, “User instructions/request”, and “Planned fetch/Command I’d run”.
-  - Keep only the last assistant‑like section if present, then limit to the last two sentences; hard cap ~600 chars.
-  - File: `src/handlers/codex-agent.ts` (function `sanitizeOutput`).
+- The prompt instructs the agent to avoid `@` mentions to prevent self‑triggering.
+- Keep any output sanitization in the agent workflow, not in this plugin.
 
 ## Prompt Context Size
 
-- Optional event embedding: when enabled, we include the raw GitHub event JSON in the prompt for full context, but:
-  - We strip all `*_url` fields while preserving the literal `url` key to shrink size.
-  - Toggles (off by default in compute): `PROMPT_INCLUDE_EVENT=1`, `PROMPT_STRIP_URLS=1`.
-  - Logs record raw vs sanitized lengths when enabled.
+- Keep the task string small (workflow_dispatch input limits).
+- Do not embed full webhook JSON in the task; the agent workflow fetches issue context on its own.
 
 ## Runtime Artifacts
 
 - The plugin can write runtime files to `runtime-logs/` and upload them as a workflow artifact:
   - `prompt-<run_id>.txt` → exact prompt string used.
-  - `pi-request-<run_id>.json` → the body posted to `/api/codex` (includes `timeout_ms`, `post:false`, `mention:false`).
+  - `agent-request-<run_id>.json` → workflow dispatch inputs.
   - `event-<run_id>.json` → decoded GitHub event (when `WRITE_EVENT_FILE=1`).
   - `event-sanitized-<run_id>.json` → event with `*_url` removed (when event embedding is enabled).
 - compute.yml enables only `WRITE_PROMPT_FILE=1` and `WRITE_EVENT_FILE=1` by default to keep cold start minimal.
 
 ## Defaults & Test Target
 
-- Timeout forwarded to Pi: `PI_TIMEOUT_MS=900000` (15 minutes).
 - Test issue default moved to `#23` for a cleaner thread.
 
-<!-- Pi server operational scripts/hook guidance removed; refer to submodules/pi-agent/docs/os-server-setup.md for ops. -->
-  - Non-blocking and silent if local path isn’t present. Set `DISABLE_PI_AGENT_SYNC=1` to skip.
+## Deterministic Fast Paths
 
-## Pi Server Contract (for reference)
-
-- Route: `POST /api/codex` accepts JSON:
-  - `prompt` (runs `codex exec <prompt>`) or `comment`/`raw_comment` (bypass codex).
-  - Optional `repo`, `issue` or `pr`, `post` (server uses `gh` to comment), `timeout_ms`, `mention`.
-- Response: `{ ok, code, output, error, posted, gh }` (note `code=143` from codex means timeout/termination).
-
-## Plugin runtime knobs
-
-- `PI_URL` → base URL to the Pi server.
-- `PI_TIMEOUT_MS` → forwarded as `timeout_ms` in the Pi payload.
-- `PI_POST` → boolean; server posting on/off.
-- `PI_MINIMAL=1` → switch to a compact prompt body (reduces Codex timeouts).
-- `PROMPT_FETCH_ISSUE=1` → prefetch issue/PR + comments (default on).
-- `PROMPT_FETCH_LABELS=1` → prefetch repository labels and embed into prompt (default on). Also enables a fast path.
-
-## Deterministic Fast Paths (skip Pi/Codex)
-
-Do NOT add any special‑case fast paths. This project must remain a generalized system. All requests flow through the same Codex path (with optional prefetched context like the issue/PR + comments). If you need better accuracy, improve the prompt or context — do not branch behavior based on the command.
-
-## Prompt Guidance for “Hello world” verification
-
-- Preferred: let the server post. Send a prompt that yields exactly `Hello world` and include `repo` + `issue` → the server posts via `gh`.
-- If you must force Codex to auth+post itself, craft a prompt that instructs `gh auth login` and `gh issue comment` and set `post: false`. You will need to provide `GH_TOKEN` to the Codex process; this is not the default path.
+Do NOT add any special‑case fast paths. This project must remain a generalized system. All requests flow through the same path (with optional prefetched context like the issue/PR + comments). If you need better accuracy, improve the prompt or context — do not branch behavior based on the command.
 
 ## Notes
 

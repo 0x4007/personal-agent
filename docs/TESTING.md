@@ -8,6 +8,12 @@
 
 This triggers the kernel to dispatch the `Personal Agent Compute` workflow in `0x4007/personal-agent`.
 
+## Required Secrets
+
+- `PAT_FULL` (or `USER_PAT`) for GitHub writes.
+- `UOS_AI_USER_TOKEN` for ai.ubq.fi LLM calls.
+- `KERNEL_PUBLIC_KEY` for signature verification.
+
 ## Monitor Runs
 
 - List runs:
@@ -21,8 +27,8 @@ This triggers the kernel to dispatch the `Personal Agent Compute` workflow in `0
 
 Each run uploads `runtime-logs-<run_id>` containing:
 
-- `prompt-<run_id>.txt` - the full prompt sent to the kernel.
-- `pi-request-<run_id>.json` - the JSON body posted to `/api/codex`.
+- `prompt-<run_id>.txt` - the full prompt used by the workflow.
+- `agent-request-<run_id>.json` - the workflow dispatch inputs.
 - `event-<run_id>.json` - decoded GitHub event payload.
 
 Download:
@@ -36,12 +42,12 @@ gh run download <run_id> -R 0x4007/personal-agent -n runtime-logs-<run_id> -D /t
 - `LOG_PROMPT=1` - print the prompt to logs.
 - `WRITE_PROMPT_FILE=1` - write prompt and request files to artifacts.
 - `WRITE_EVENT_FILE=1` - include decoded event payload.
-- `LOG_PI_BODY=1` - log the `/api/codex` request body.
 - `PROMPT_FETCH_STYLE=0` - disable style example fetches when debugging.
+- `UOS_AGENT_DISPATCH=0` - skip workflow dispatch (local debug).
 
 ## Common Pitfalls
 
 - The comment must start with `@0x4007`.
-- If no reply posts, confirm `PI_URL` is reachable and the kernel is running.
-- If placeholders fail, confirm `PAT_FULL` or `USER_PAT` is set.
+- If no reply posts, confirm the kernel dispatch points to your fork and the workflow ran.
 - If style feels generic, confirm `PROMPT_FETCH_STYLE=1` and your PAT has access to your comment history.
+- If the run fails early with ai.ubq.fi auth errors, confirm `UOS_AI_USER_TOKEN` is set.

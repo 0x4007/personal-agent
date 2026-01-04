@@ -4,6 +4,7 @@
 
 - Use a single fine-grained PAT with repo access and comment write permissions.
 - Set it as `PAT_FULL` (or `USER_PAT`) in repo secrets.
+- Set `UOS_AI_USER_TOKEN` for ai.ubq.fi LLM calls.
 
 ## Optional Split
 

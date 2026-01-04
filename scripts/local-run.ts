@@ -2,18 +2,27 @@
  * Skips signature/eventPayload decompression by constructing Context directly.
  */
 import { runPlugin } from "../src/index";
+import { Context } from "../src/types/context";
+
+type LogMeta = Record<string, unknown>;
+type LogResult = { logMessage: { diff: string; type: string }; metadata: LogMeta };
+type LocalLogger = {
+  info: (...args: unknown[]) => void;
+  ok: (msg: string, meta?: LogMeta) => LogResult;
+  error: (msg: string, meta?: LogMeta) => LogResult;
+};
 
 // Minimal logger + comment handler stubs compatible with our usage
-const logger = {
-  info: (...args: any[]) => console.log("[info]", ...args),
-  ok: (msg: any, meta?: any) => {
+const logger: LocalLogger = {
+  info: (...args: unknown[]) => console.log("[info]", ...args),
+  ok: (msg: string, meta: LogMeta = {}) => {
     console.log("[ok]", msg, meta ?? "");
     return {
       logMessage: { diff: String(msg), type: "info" },
       metadata: { message: String(msg), ...meta },
     };
   },
-  error: (msg: any, meta?: any) => {
+  error: (msg: string, meta: LogMeta = {}) => {
     console.error("[error]", msg, meta ?? "");
     return {
       logMessage: { diff: String(msg), type: "fatal" },
@@ -23,24 +32,33 @@ const logger = {
 };
 
 const commentHandler = {
-  postComment: async (_ctx: any, message: any) => {
-    console.log("[comment]", typeof message === "string" ? message : message?.logMessage?.diff || message);
+  postComment: async (context: Context, message: unknown) => {
+    const body = (() => {
+      if (typeof message === "string") return message;
+      if (typeof message === "object" && message && "logMessage" in message) {
+        return (message as { logMessage?: { diff?: string } }).logMessage?.diff || message;
+      }
+      return message;
+    })();
+    console.log("[comment]", body);
+    logger.info("[comment context]", context.eventName);
     return null;
   },
 };
 
-// Wrap fetch: stub when REAL_PI unset; otherwise add timeout + logging
-const originalFetch: typeof fetch | undefined = (globalThis as any).fetch;
+// Wrap fetch: stub when REAL_FETCH/REAL_PI unset; otherwise add timeout + logging
+const originalFetch = globalThis.fetch;
 const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 15000);
 
-if (!process.env.REAL_PI) {
-  (globalThis as any).fetch = (async (input: any, init?: any) => {
+const shouldUseRealFetch = Boolean(process.env.REAL_FETCH || process.env.REAL_PI);
+if (!shouldUseRealFetch) {
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     console.log("[stub fetch]", input, init?.method || "GET");
-    const body = JSON.stringify({ ok: true, code: 200, posted: false });
+    const body = JSON.stringify({ ok: true, code: 200 });
     return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
-  }) as any;
+  };
 } else if (originalFetch) {
-  (globalThis as any).fetch = (async (input: any, init?: any) => {
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     console.log("[fetch]", input, init?.method || "GET");
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(new Error("timeout")), FETCH_TIMEOUT_MS);
@@ -51,7 +69,7 @@ if (!process.env.REAL_PI) {
     } finally {
       clearTimeout(timer);
     }
-  }) as any;
+  };
 }
 
 const AGENT = process.env.AGENT_OWNER || "0x4007";
@@ -61,20 +79,20 @@ const ISSUE = Number(process.env.ISSUE || 1);
 const BODY = process.env.BODY || `@${AGENT} test local`;
 
 async function main() {
-  const context: any = {
+  const context = {
     eventName: "issue_comment.created",
     payload: {
-      comment: { user: { login: OWNER }, body: BODY, html_url: "http://local/test" },
+      comment: { user: { login: OWNER }, body: BODY, html_url: "https://local.test" },
       repository: { name: REPO, owner: { login: OWNER } },
       issue: { number: ISSUE },
     },
     env: {
       AGENT_OWNER: AGENT,
-      PI_URL: process.env.PI_URL || "http://pi.local:3000",
+      UOS_AGENT_DISPATCH: "0",
     },
     logger,
     commentHandler,
-  };
+  } as Context;
 
   await runPlugin(context);
 }

@@ -11,17 +11,20 @@ export const envSchema = T.Object({
   LOG_LEVEL: T.Optional(T.Enum(LOG_LEVEL, { default: LOG_LEVEL.INFO })),
   KERNEL_PUBLIC_KEY: T.Optional(T.String()),
   AGENT_OWNER: T.String(),
+  UOS_AGENT_OWNER: T.Optional(T.String()),
+  UOS_AGENT_REPO: T.Optional(T.String()),
+  UOS_AGENT_WORKFLOW: T.Optional(T.String()),
+  UOS_AGENT_REF: T.Optional(T.String()),
+  UOS_AGENT_DISPATCH: T.Optional(T.String()),
   USER_PAT: T.Optional(T.String()),
   USER_PAT_FULL: T.Optional(T.String()),
   USER_PAT_READ: T.Optional(T.String()),
   PAT: T.Optional(T.String()),
   PAT_FULL: T.Optional(T.String()),
   PAT_READ: T.Optional(T.String()),
-  // Kernel/PI integration
-  PI_URL: T.Optional(T.String()),
-  KERNEL_URL: T.Optional(T.String()),
-  PI_TIMEOUT_MS: T.Optional(T.String()),
-  PI_MENTION: T.Optional(T.String()),
+  // Prompt shaping
+  PROMPT_MINIMAL: T.Optional(T.String()),
+  UOS_PROMPT_MINIMAL: T.Optional(T.String()),
   PI_MINIMAL: T.Optional(T.String()),
   // Prompt shaping
   PROMPT_INCLUDE_EVENT: T.Optional(T.String()),
@@ -61,7 +64,6 @@ export const envSchema = T.Object({
   SUPABASE_PROJECT_ID: T.Optional(T.String()),
   // Debug/logging
   LOG_PROMPT: T.Optional(T.String()),
-  LOG_PI_BODY: T.Optional(T.String()),
   WRITE_PROMPT_FILE: T.Optional(T.String()),
   WRITE_EVENT_FILE: T.Optional(T.String()),
   DEBUG_EVENT: T.Optional(T.String()),

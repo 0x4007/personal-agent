@@ -3,27 +3,26 @@
 ## TL;DR
 
 - Compute runs `node dist/index.js` (no installs/builds in compute).
-- The agent is a thin client: it builds a prompt + context and calls your kernel/PI server at `/api/codex`.
-- The kernel posts the final reply via `gh`; the action only creates a placeholder comment.
+- The kernel dispatches the `compute.yml` workflow via `workflow_dispatch` (see `callPersonalAgent`).
+- The workflow builds a prompt and dispatches the agent workflow (copied from kernel) to reply.
 
 ## Key Files
 
-- `src/handlers/codex-agent/index.ts` - main handler (kernel/PI handoff).
-- `src/handlers/codex-agent/lib/prompt.ts` - prompt builder (context shaping).
-- `src/handlers/codex-agent/lib/github.ts` - GitHub prefetch + placeholder comment.
-- `src/handlers/codex-agent/lib/pi.ts` - `/api/codex` client.
+- `src/handlers/codex-agent/index.ts` - main handler (prompt + agent dispatch).
+- `src/handlers/codex-agent/lib/prompt.ts` - prompt builder (tone + output contract).
+- `src/handlers/codex-agent/lib/github.ts` - style example retrieval.
+- `src/handlers/codex-agent/lib/agent-dispatch.ts` - workflow dispatch helper.
 - `src/index.ts` - minimal Actions runner (decodes inputs).
 - `.github/workflows/compute.yml` - runs `node dist/index.js` only.
 
 ## Env Highlights
 
-- `PAT_FULL` or `USER_PAT` - create placeholder comments as the owner.
-- `PI_URL` / `KERNEL_URL` - base URL for the kernel server (e.g., `https://kernel.pavlovcik.com`).
-- `PI_TIMEOUT_MS` - timeout forwarded to `/api/codex`.
-- `PI_MENTION` - set `false` to suppress @mentions in replies.
-- `PI_MINIMAL` - set `1` to send only the raw command as the prompt.
-- `PROMPT_FETCH_ISSUE` - prefetch issue/PR context (default on).
-- `PROMPT_FETCH_LABELS` - prefetch repo labels (default off).
+- `KERNEL_PUBLIC_KEY` - verify kernel signature on workflow inputs.
+- `PAT_FULL` - token used for GitHub actions (context reads + posting replies).
+- `UOS_AI_USER_TOKEN` - ai.ubq.fi token used for LLM calls in the agent workflow.
+- `AGENT_OWNER` - owner username for matching `@` mentions.
+- `UOS_AGENT_OWNER` / `UOS_AGENT_REPO` / `UOS_AGENT_WORKFLOW` / `UOS_AGENT_REF` - agent workflow target.
+- `UOS_AGENT_DISPATCH` - set `0` to disable dispatch (local debugging).
 - `PROMPT_FETCH_STYLE` - fetch style examples from the owner's recent comments (default on).
 - `PROMPT_STYLE_SOURCE` - `github` (default), `vector-db`, or `auto`.
 - `PROMPT_STYLE_EXAMPLES` - number of style examples to embed in the prompt.
@@ -35,10 +34,10 @@
 - `PROMPT_STYLE_CACHE_WRITE` - set `0` to disable cache updates.
 - `PROMPT_STYLE_CACHE_MARKER` - HTML comment marker label for cached payloads.
 - `UOS_VECTOR_DB_URL` / `UOS_VECTOR_DB_KEY` - Supabase REST config for vector DB style examples (or `SUPABASE_URL` + `SUPABASE_*_KEY`).
-- `PROMPT_INCLUDE_EVENT` - include full webhook JSON in the prompt.
-- `PROMPT_STRIP_URLS` - remove `*_url` fields from event/context.
 - `PROMPT_MAX_LEN` - guardrail to fall back to minimal prompt if too large.
+- `LOG_PROMPT` - log the full prompt in workflow logs.
+- `WRITE_PROMPT_FILE` / `WRITE_EVENT_FILE` - write prompt/event files to artifacts.
 
 ## Notes
 
-- Kernel dispatch must send a real installation token (see `ubiquity-os-kernel` `callPersonalAgent`).
+- Kernel dispatch provides the signed payload; GitHub operations run under `PAT_FULL`.
