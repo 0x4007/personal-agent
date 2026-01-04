@@ -63,7 +63,7 @@ export async function codexAgent(context: Context): Promise<void> {
   // No fast paths: always go through Codex (generalized system)
 
   // Build a universal GitHub reply prompt (single comment output, clean GFM formatting)
-  const styleExamples = isMinimalEnv ? [] : await maybeFetchStyleExamples({ login: agentOwner, logger });
+  const styleExamples = isMinimalEnv ? [] : await maybeFetchStyleExamples({ login: agentOwner, owner, repo, logger });
   const richPrompt = buildRichPrompt({
     accessLevel,
     isPr,

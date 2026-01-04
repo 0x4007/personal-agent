@@ -18,6 +18,8 @@ Personal Agent is a UbiquityOS plugin that routes `@<owner>` mentions to your ke
 5. (Optional) Set `PI_MENTION=false` to avoid @mention prefixes in replies.
 6. (Optional) Configure style examples from your own comments:
    - `PROMPT_FETCH_STYLE=1` (default on).
+   - `PROMPT_STYLE_SOURCE=vector-db` to pull examples from the embeddings DB (or `auto` to fall back to GitHub).
+   - `UOS_VECTOR_DB_URL` + `UOS_VECTOR_DB_KEY` (or `SUPABASE_URL` + `SUPABASE_*_KEY`) for vector DB access.
    - `PROMPT_STYLE_CACHE_ISSUE` (and optional `PROMPT_STYLE_CACHE_REPO`) to cache style examples in a GitHub issue comment.
 
 ## Usage

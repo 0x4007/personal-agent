@@ -25,6 +25,7 @@
 - `PROMPT_FETCH_ISSUE` - prefetch issue/PR context (default on).
 - `PROMPT_FETCH_LABELS` - prefetch repo labels (default off).
 - `PROMPT_FETCH_STYLE` - fetch style examples from the owner's recent comments (default on).
+- `PROMPT_STYLE_SOURCE` - `github` (default), `vector-db`, or `auto`.
 - `PROMPT_STYLE_EXAMPLES` - number of style examples to embed in the prompt.
 - `PROMPT_STYLE_LOOKBACK_DAYS` - history window for style examples.
 - `PROMPT_STYLE_EXAMPLE_MAX_CHARS` - truncate each style example body.
@@ -33,6 +34,7 @@
 - `PROMPT_STYLE_CACHE_TTL_HOURS` - refresh cadence for cached style examples.
 - `PROMPT_STYLE_CACHE_WRITE` - set `0` to disable cache updates.
 - `PROMPT_STYLE_CACHE_MARKER` - HTML comment marker label for cached payloads.
+- `UOS_VECTOR_DB_URL` / `UOS_VECTOR_DB_KEY` - Supabase REST config for vector DB style examples (or `SUPABASE_URL` + `SUPABASE_*_KEY`).
 - `PROMPT_INCLUDE_EVENT` - include full webhook JSON in the prompt.
 - `PROMPT_STRIP_URLS` - remove `*_url` fields from event/context.
 - `PROMPT_MAX_LEN` - guardrail to fall back to minimal prompt if too large.
