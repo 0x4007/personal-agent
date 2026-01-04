@@ -1460,19 +1460,15 @@ var require_light = __commonJS({
 });
 
 // src/handlers/codex-agent/lib/config.ts
-function parseMentionEnv(val) {
-  if (val === void 0 || val === "") return false;
-  const s = String(val).toLowerCase().trim();
-  if (s === "false" || s === "0" || s === "no" || s === "off") return false;
-  if (s === "true" || s === "1" || s === "yes" || s === "on") return true;
-  return val;
-}
 function selectPatToken(opts) {
   const { isSelf } = opts;
   if (isSelf) {
     return process.env.USER_PAT_FULL || process.env.PAT_FULL || process.env.USER_PAT || process.env.PLUGIN_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
   }
   return process.env.USER_PAT_READ || process.env.PAT_READ || process.env.USER_PAT || process.env.PLUGIN_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
+}
+function selectWriteToken() {
+  return selectPatToken({ isSelf: true });
 }
 var init_config = __esm({
   "src/handlers/codex-agent/lib/config.ts"() {
@@ -1531,156 +1527,6 @@ var init_utils = __esm({
 });
 
 // src/handlers/codex-agent/lib/github.ts
-async function maybePrefetchContext(args) {
-  const { logger, isSelf, owner, repo, issueNumber, isPr } = args;
-  const isPrefetchEnabled = (process.env.PROMPT_FETCH_ISSUE ?? "1") === "1";
-  if (!isPrefetchEnabled) return null;
-  try {
-    const token = selectPatToken({ isSelf: Boolean(isSelf) });
-    return await fetchIssueContext({ owner, repo, issueNumber, isPr, token });
-  } catch (e) {
-    logger.info("[codexAgent] Prefetch failed (non-fatal)", { error: String(e) });
-    return null;
-  }
-}
-async function createGithubComment(params, logger) {
-  const { owner, repo, issueNumber, body, token } = params;
-  if (!token) throw new Error("Missing GitHub token to create comment");
-  const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${token}`,
-      accept: "application/vnd.github+json",
-      "content-type": "application/json",
-      "x-github-api-version": "2022-11-28"
-    },
-    body: JSON.stringify({ body })
-  });
-  if (!resp.ok) {
-    const txt = await safeText(resp);
-    throw new Error(`GitHub comment HTTP ${resp.status}: ${txt}`);
-  }
-  try {
-    const json = await resp.json();
-    const id = Number(json.id);
-    if (!Number.isFinite(id)) return null;
-    logger.info("[codexAgent] Created comment", { id });
-    return { id };
-  } catch {
-    return null;
-  }
-}
-async function maybeCreatePlaceholderComment(args) {
-  const { logger, isSelf, owner, repo, issueNumber } = args;
-  try {
-    const token = selectPatToken({ isSelf: Boolean(isSelf) });
-    const placeholder = "Thinking...";
-    const created = await createGithubComment(
-      {
-        owner,
-        repo,
-        issueNumber,
-        body: placeholder,
-        token
-      },
-      logger
-    );
-    const id = created?.id ?? null;
-    logger.info("[codexAgent] Created placeholder comment", { id });
-    return id;
-  } catch (e) {
-    logger.info("[codexAgent] Placeholder comment creation failed (non-fatal)", { error: String(e) });
-    return null;
-  }
-}
-async function fetchIssueContext(params) {
-  const { owner, repo, issueNumber, isPr, token } = params;
-  if (!token) throw new Error("Missing token for GitHub context fetch");
-  const base = `https://api.github.com/repos/${owner}/${repo}`;
-  const headers = {
-    authorization: `Bearer ${token}`,
-    accept: "application/vnd.github+json",
-    "x-github-api-version": "2022-11-28"
-  };
-  async function getJson(url) {
-    const r = await fetch(url, { headers });
-    if (!r.ok) throw new Error(`${url} -> HTTP ${r.status}`);
-    return r.json();
-  }
-  const issue = await getJson(`${base}/issues/${issueNumber}`);
-  const comments = await getJson(`${base}/issues/${issueNumber}/comments?per_page=50`);
-  let pr = null;
-  if (isPr) {
-    try {
-      pr = await getJson(`${base}/pulls/${issueNumber}`);
-    } catch {
-    }
-  }
-  const issueObj = toObject(issue);
-  const slimIssue = {
-    number: toNumber(issueObj.number) ?? issueNumber,
-    title: toStringOrUndefined(issueObj.title),
-    state: toStringOrUndefined(issueObj.state),
-    author: toObject(issueObj.user).login,
-    labels: Array.isArray(issueObj.labels) ? issueObj.labels.map((l) => typeof l === "string" ? l : toStringOrUndefined(toObject(l).name)).filter((v) => Boolean(v)) : [],
-    body: toStringOrUndefined(issueObj.body),
-    created_at: toStringOrUndefined(issueObj.created_at),
-    updated_at: toStringOrUndefined(issueObj.updated_at),
-    url: toStringOrUndefined(issueObj.url)
-  };
-  const slimComments = Array.isArray(comments) ? comments.map((c) => {
-    const obj = toObject(c);
-    return {
-      author: toStringOrUndefined(toObject(obj.user).login),
-      created_at: toStringOrUndefined(obj.created_at),
-      body: toStringOrUndefined(obj.body),
-      url: toStringOrUndefined(obj.url)
-    };
-  }) : [];
-  const prObj = pr && typeof pr === "object" ? pr : null;
-  const slimPr = prObj ? {
-    merged: Boolean(prObj.merged_at),
-    draft: Boolean(prObj.draft),
-    head: toStringOrUndefined(toObject(prObj.head).ref),
-    base: toStringOrUndefined(toObject(prObj.base).ref),
-    additions: toNumber(prObj.additions) ?? void 0,
-    deletions: toNumber(prObj.deletions) ?? void 0,
-    changed_files: toNumber(prObj.changed_files) ?? void 0,
-    url: toStringOrUndefined(prObj.url)
-  } : null;
-  return { issue: slimIssue, comments: slimComments, pr: slimPr };
-}
-async function fetchRepoLabels(params) {
-  const { owner, repo, token } = params;
-  const headers = {
-    authorization: `Bearer ${token}`,
-    accept: "application/vnd.github+json",
-    "x-github-api-version": "2022-11-28"
-  };
-  const base = `https://api.github.com/repos/${owner}/${repo}/labels`;
-  const out = [];
-  let page = 1;
-  for (let i = 0; i < 3; i++) {
-    const url = `${base}?per_page=100&page=${page}`;
-    const r = await fetch(url, { headers });
-    if (!r.ok) break;
-    const arr = await r.json();
-    for (const l of arr) {
-      const obj = toObject(l);
-      out.push({ name: String(obj.name ?? ""), color: obj.color, description: obj.description });
-    }
-    if (arr.length < 100) break;
-    page++;
-  }
-  const seen = /* @__PURE__ */ new Set();
-  return out.filter((l) => {
-    const key = l.name.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).sort((a, b) => a.name.localeCompare(b.name, void 0, { sensitivity: "base" }));
-}
 function getEnvString(keys, fallback) {
   for (const key of keys) {
     const value = process.env[key];
@@ -2381,7 +2227,7 @@ function buildRichPrompt(args) {
   const styleBlock = formatStyleExamples(styleExamples ?? [], agentOwner);
   const base = `
   [mode:${accessLevel}] [type:${isPr ? "pr" : "issue"}] repo:${owner}/${repo} ${isPr ? "pr" : "issue"}:${issueNumber} actor:${sender}
-  Environment: Linux shell with GitHub CLI (gh) available and authenticated as @${agentOwner}.
+  Environment: Linux shell with GitHub CLI (gh) available and authenticated with a GitHub token.
   You are a GitHub assistant. You always return a single GitHub comment (no preamble, no wrappers).
   You are ${agentOwner}. Write in ${agentOwner}'s voice and perspective.
 
@@ -2419,56 +2265,6 @@ function buildRichPrompt(args) {
   Produce only the final GitHub comment now.`;
   return base.replace(/\n\s+/g, "\n");
 }
-function wrapJson(json) {
-  return json ? "```json\n" + json + "\n```" : "";
-}
-async function buildFullPrompt(args) {
-  const { richPrompt, command, payload, fetchedContext, owner, repo, isSelf, logger } = args;
-  const minimalPrompt = command;
-  const isMinimal = process.env.PI_MINIMAL === "1";
-  const doesIncludeEventJson = process.env.PROMPT_INCLUDE_EVENT === "1" || process.env.INCLUDE_GH_EVENT === "1";
-  const shouldStrip = (process.env.PROMPT_STRIP_URLS ?? "1") === "1";
-  let eventForPrompt = void 0;
-  if (doesIncludeEventJson) {
-    eventForPrompt = shouldStrip ? stripUrlFields(payload) : payload;
-  }
-  const eventJson = doesIncludeEventJson ? safeStringify(eventForPrompt) : "";
-  const contextJson = fetchedContext ? safeStringify(stripUrlFields(fetchedContext)) : "";
-  const basePrompt = isMinimal ? minimalPrompt : richPrompt;
-  let prompt = basePrompt;
-  const shouldFetchLabels = process.env.PROMPT_FETCH_LABELS === "1";
-  if (contextJson) {
-    prompt += `
-
-GitHub context (prefetched):
-
-${wrapJson(contextJson)}`;
-  }
-  if (shouldFetchLabels) {
-    try {
-      const token = selectPatToken({ isSelf: Boolean(isSelf) });
-      const repoLabels = await fetchRepoLabels({ owner, repo, token });
-      if (repoLabels.length) {
-        const labelsJson = safeStringify(repoLabels);
-        prompt += `
-
-Repository labels (prefetched):
-
-${wrapJson(labelsJson)}`;
-      }
-    } catch (e) {
-      logger.info("[codexAgent] Prefetch labels failed (non-fatal)", { error: String(e) });
-    }
-  }
-  if (doesIncludeEventJson) {
-    prompt += `
-
-Full GitHub event JSON (verbatim):
-
-${wrapJson(eventJson)}`;
-  }
-  return { prompt, eventJson, contextJson, isMinimal };
-}
 var init_prompt = __esm({
   "src/handlers/codex-agent/lib/prompt.ts"() {
     "use strict";
@@ -2479,105 +2275,115 @@ var init_prompt = __esm({
   }
 });
 
-// src/handlers/codex-agent/lib/http.ts
-async function fetchWithTimeoutRetry(url, init, retries = 1) {
-  const ctl = new AbortController();
-  const t = init.timeout && init.timeout > 0 ? setTimeout(() => ctl.abort("timeout"), Math.floor(init.timeout)) : void 0;
-  try {
-    return await fetch(url, { ...init, signal: ctl.signal });
-  } catch (err) {
-    if (retries > 0) {
-      const msg = String(err || "");
-      if (msg.includes("timeout") || msg.includes("fetch") || msg.includes("network")) {
-        await new Promise((r) => setTimeout(r, 1e3));
-        return await fetchWithTimeoutRetry(url, init, retries - 1);
-      }
-    }
-    throw err;
-  } finally {
-    if (t) clearTimeout(t);
-  }
+// src/handlers/codex-agent/lib/agent-dispatch.ts
+import { brotliCompressSync } from "zlib";
+import { randomUUID } from "crypto";
+function normalizeEnvironmentName(environment) {
+  return String(environment ?? "").trim().toLowerCase();
 }
-var init_http = __esm({
-  "src/handlers/codex-agent/lib/http.ts"() {
-    "use strict";
-    init_esm_shims();
+function getConfigFullPathForEnvironment(environment) {
+  const normalized = normalizeEnvironmentName(environment);
+  if (!normalized) {
+    return DEV_CONFIG_FULL_PATH;
   }
-});
-
-// src/handlers/codex-agent/lib/pi.ts
-function buildRequestBody(args) {
-  const { isMinimal, prompt, timeoutMs, shouldPost, mentionOverride, editCommentId, owner, repo, isPr, issueNumber } = args;
-  if (isMinimal) {
-    return { prompt, timeout_ms: timeoutMs, post: shouldPost, mention: mentionOverride, edit_comment_id: editCommentId };
+  if (normalized === "production" || normalized === "prod") {
+    return CONFIG_FULL_PATH;
   }
-  return {
-    prompt,
-    timeout_ms: timeoutMs,
-    repo: `${owner}/${repo}`,
-    ...isPr ? { pr: issueNumber } : { issue: issueNumber },
-    post: shouldPost,
-    mention: mentionOverride,
-    edit_comment_id: editCommentId
+  const suffix = ENVIRONMENT_TO_CONFIG_SUFFIX[normalized] ?? normalized;
+  if (suffix === "dev") {
+    return DEV_CONFIG_FULL_PATH;
+  }
+  if (!VALID_CONFIG_SUFFIX.test(suffix)) {
+    return DEV_CONFIG_FULL_PATH;
+  }
+  return `.github/.ubiquity-os.config.${suffix}.yml`;
+}
+function getConfigPathCandidatesForEnvironment(environment) {
+  const primary = getConfigFullPathForEnvironment(environment);
+  return primary === CONFIG_FULL_PATH ? [CONFIG_FULL_PATH] : [primary, CONFIG_FULL_PATH];
+}
+function compressString(value) {
+  const data = Buffer.from(value, "utf8");
+  return Buffer.from(brotliCompressSync(data)).toString("base64");
+}
+function resolveAgentTarget(env) {
+  const owner = String(env.UOS_AGENT_OWNER || process.env.UOS_AGENT_OWNER || "ubiquity-os").trim();
+  const repo = String(env.UOS_AGENT_REPO || process.env.UOS_AGENT_REPO || "ubiquity-os-kernel").trim();
+  const workflowId = String(env.UOS_AGENT_WORKFLOW || process.env.UOS_AGENT_WORKFLOW || "agent.yml").trim();
+  const ref = String(env.UOS_AGENT_REF || process.env.UOS_AGENT_REF || "").trim();
+  if (!owner || !repo || !workflowId) {
+    throw new Error("Missing agent workflow target (UOS_AGENT_OWNER/UOS_AGENT_REPO/UOS_AGENT_WORKFLOW).");
+  }
+  return { owner, repo, workflowId, ref: ref || void 0 };
+}
+async function getDefaultBranch(context, owner, repo) {
+  if (!context.octokit) {
+    throw new Error("Missing octokit; cannot resolve default branch.");
+  }
+  const response = await context.octokit.rest.repos.get({ owner, repo });
+  return response.data.default_branch;
+}
+function buildAgentSettings(context) {
+  const environment = String(context.env.ENVIRONMENT || process.env.ENVIRONMENT || "").trim();
+  const settings = {};
+  if (environment) {
+    settings.environment = environment;
+  }
+  const candidates = getConfigPathCandidatesForEnvironment(environment);
+  if (candidates.length) {
+    settings.configPathCandidates = candidates;
+  }
+  return settings;
+}
+async function dispatchAgentWorkflow(args) {
+  const { context, task, logger } = args;
+  if (!context.octokit) {
+    throw new Error("Missing octokit; cannot dispatch workflow.");
+  }
+  const authToken = String(selectWriteToken() || context.authToken || "").trim();
+  if (!authToken) {
+    throw new Error("Missing authToken for agent workflow dispatch.");
+  }
+  const target = resolveAgentTarget(context.env);
+  const ref = target.ref || await getDefaultBranch(context, target.owner, target.repo);
+  const stateId = randomUUID();
+  const settings = buildAgentSettings(context);
+  const eventPayload = compressString(safeStringify(context.payload ?? {}));
+  const command = JSON.stringify({ name: "agent", parameters: { task } });
+  const inputs = {
+    stateId,
+    eventName: context.eventName,
+    eventPayload,
+    settings: JSON.stringify(settings),
+    authToken,
+    ubiquityKernelToken: String(context.ubiquityKernelToken || ""),
+    ref,
+    command,
+    signature: ""
   };
-}
-function logPiBodyIfEnabled(args) {
-  const { logger, body } = args;
-  if (process.env.LOG_PI_BODY === "1") {
-    logger.info("[codexAgent] Pi request body", { body });
-  }
-}
-async function invokePiCodex(args) {
-  const { baseUrl, body, timeoutMs, agentOwner, logger } = args;
-  const runId = process.env.GITHUB_RUN_ID || "";
-  const runRepo = process.env.GITHUB_REPOSITORY || "";
-  const runAttempt = process.env.GITHUB_RUN_ATTEMPT || "";
-  const resp = await sendPiRequest({
-    url: `${baseUrl}/api/codex`,
-    body,
-    timeoutMs,
-    runId,
-    runRepo,
-    runAttempt,
-    agentOwner
+  logger.info("[agent] Dispatching workflow", { owner: target.owner, repo: target.repo, workflow: target.workflowId, ref });
+  await context.octokit.rest.actions.createWorkflowDispatch({
+    owner: target.owner,
+    repo: target.repo,
+    workflow_id: target.workflowId,
+    ref,
+    inputs
   });
-  if (!resp.ok) {
-    const txt = await safeText(resp);
-    throw new Error(`Pi /api/codex HTTP ${resp.status}: ${txt}`);
-  }
-  const data = await resp.json();
-  if (data?.req_id) {
-    logger.info("[codexAgent] Pi request id", { reqId: data.req_id, runId: data.run_id || runId });
-  }
-  if (!data.ok) throw new Error(`Pi /api/codex failed (code ${data.code}): ${data.error || "unknown error"}`);
-  return data;
+  return { target, ref, inputs };
 }
-async function sendPiRequest(args) {
-  const { url, body, timeoutMs, runId, runRepo, runAttempt, agentOwner } = args;
-  return await fetchWithTimeoutRetry(
-    url,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-run-id": runId,
-        "x-run-repo": runRepo,
-        "x-run-attempt": runAttempt,
-        "x-agent-owner": agentOwner
-      },
-      body: JSON.stringify(body),
-      // Give the HTTP call slightly more than Codex time to return the JSON
-      timeout: Math.max(1e3, Math.min(timeoutMs + 3e4, 18e5))
-    },
-    1
-  );
-}
-var init_pi = __esm({
-  "src/handlers/codex-agent/lib/pi.ts"() {
+var CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, ENVIRONMENT_TO_CONFIG_SUFFIX, VALID_CONFIG_SUFFIX;
+var init_agent_dispatch = __esm({
+  "src/handlers/codex-agent/lib/agent-dispatch.ts"() {
     "use strict";
     init_esm_shims();
-    init_http();
     init_utils();
+    init_config();
+    CONFIG_FULL_PATH = ".github/.ubiquity-os.config.yml";
+    DEV_CONFIG_FULL_PATH = ".github/.ubiquity-os.config.dev.yml";
+    ENVIRONMENT_TO_CONFIG_SUFFIX = {
+      development: "dev"
+    };
+    VALID_CONFIG_SUFFIX = /^[a-z0-9][a-z0-9_-]*$/i;
   }
 });
 
@@ -2589,11 +2395,11 @@ function writeRuntimeLogs(params) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const runId = process.env.GITHUB_RUN_ID || String(Date.now());
   const promptPath = path2.join(dir, `prompt-${runId}.txt`);
-  const bodyPath = path2.join(dir, `pi-request-${runId}.json`);
+  const bodyPath = path2.join(dir, `agent-request-${runId}.json`);
   const payloadPath = path2.join(dir, `event-${runId}.json`);
   const payloadSanitizedPath = path2.join(dir, `event-sanitized-${runId}.json`);
-  fs.writeFileSync(promptPath, params.prompt, "utf8");
-  fs.writeFileSync(bodyPath, JSON.stringify(params.body, null, 2), "utf8");
+  fs.writeFileSync(promptPath, params.task, "utf8");
+  fs.writeFileSync(bodyPath, JSON.stringify(params.inputs, null, 2), "utf8");
   if (process.env.WRITE_EVENT_FILE === "1") {
     try {
       fs.writeFileSync(payloadPath, JSON.stringify(params.payload, null, 2), "utf8");
@@ -2605,19 +2411,18 @@ function writeRuntimeLogs(params) {
   }
 }
 function logPayloadIfEnabled(args) {
-  const { logger, payload, eventJson, contextJson, prompt } = args;
+  const { logger, payload, task, inputs } = args;
   if (process.env.LOG_PROMPT === "1") {
-    const rawLen = process.env.PROMPT_INCLUDE_EVENT === "1" || process.env.INCLUDE_GH_EVENT === "1" ? safeStringify(payload).length : 0;
-    const sanLen = rawLen > 0 ? eventJson.length : 0;
-    const ctxLen = contextJson.length;
-    logger.info("[codexAgent] Prompt (full)", { length: prompt.length, prompt, eventRawLen: rawLen, eventSanitizedLen: sanLen, contextLen: ctxLen });
+    const rawLen = safeStringify(payload).length;
+    const inputsLen = safeStringify(inputs).length;
+    logger.info("[codexAgent] Task (full)", { length: task.length, task, eventLen: rawLen, inputsLen });
   }
 }
 async function maybeWriteRuntimeLogs(args) {
-  const { prompt, body, payload, logger } = args;
+  const { task, inputs, payload, logger } = args;
   if (process.env.WRITE_PROMPT_FILE !== "1") return;
   try {
-    writeRuntimeLogs({ prompt, body, payload, sanitized: process.env.PROMPT_INCLUDE_EVENT === "1" ? stripUrlFields(payload) : void 0 });
+    writeRuntimeLogs({ task, inputs, payload, sanitized: process.env.PROMPT_INCLUDE_EVENT === "1" ? stripUrlFields(payload) : void 0 });
   } catch (e) {
     logger.info("[codexAgent] runtime log write failed (non-fatal)", { error: String(e) });
   }
@@ -2658,13 +2463,7 @@ async function codexAgent(context) {
     await context.commentHandler.postComment(context, logger.error("No command provided after username mention"));
     return;
   }
-  const kernelBaseUrl = String(process.env.KERNEL_URL || process.env.PI_URL || env.PI_URL || "https://kernel.pavlovcik.com").replace(/\/+$/, "");
-  const timeoutRaw = Number(process.env.PI_TIMEOUT_MS || 9e5);
-  const timeoutMs = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? Math.floor(timeoutRaw) : 9e5;
-  const shouldPost = isSelf;
-  const mentionOverride = parseMentionEnv(process.env.PI_MENTION);
-  const isMinimalEnv = process.env.PI_MINIMAL === "1";
-  const fetchedContext = await maybePrefetchContext({ logger, isSelf, owner, repo, issueNumber, isPr });
+  const isMinimalEnv = process.env.PROMPT_MINIMAL === "1" || process.env.UOS_PROMPT_MINIMAL === "1" || process.env.PI_MINIMAL === "1";
   const styleExamples = isMinimalEnv ? [] : await maybeFetchStyleExamples({ login: agentOwner, owner, repo, logger });
   const richPrompt = buildRichPrompt({
     accessLevel,
@@ -2677,54 +2476,36 @@ async function codexAgent(context) {
     command,
     styleExamples
   });
-  const {
-    prompt: fullPrompt,
-    eventJson,
-    contextJson,
-    isMinimal
-  } = await buildFullPrompt({
-    richPrompt,
-    command,
-    payload,
-    fetchedContext,
-    owner,
-    repo,
-    isSelf,
-    logger
-  });
-  let prompt = fullPrompt;
+  const isMinimal = isMinimalEnv;
+  let task = isMinimal ? command : richPrompt;
   const promptMaxLenRaw = Number(process.env.PROMPT_MAX_LEN || 0);
   const promptMaxLen = Number.isFinite(promptMaxLenRaw) && promptMaxLenRaw > 0 ? Math.floor(promptMaxLenRaw) : 0;
-  if (!isMinimal && promptMaxLen > 0 && prompt.length > promptMaxLen) {
-    logger.info("[codexAgent] Prompt exceeds PROMPT_MAX_LEN, falling back to minimal", { len: prompt.length, max: promptMaxLen });
-    prompt = command;
+  if (!isMinimal && promptMaxLen > 0 && task.length > promptMaxLen) {
+    logger.info("[codexAgent] Task exceeds PROMPT_MAX_LEN, falling back to minimal", { len: task.length, max: promptMaxLen });
+    task = command;
   }
   try {
-    logPayloadIfEnabled({ logger, payload, eventJson, contextJson, prompt });
-    const editCommentId = shouldPost ? await maybeCreatePlaceholderComment({ logger, isSelf, owner, repo, issueNumber }) : null;
-    const body2 = buildRequestBody({ isMinimal, prompt, timeoutMs, shouldPost, mentionOverride, editCommentId, owner, repo, isPr, issueNumber });
-    logPiBodyIfEnabled({ logger, body: body2 });
-    await maybeWriteRuntimeLogs({ prompt, body: body2, payload, logger });
-    await invokePiCodex({
-      baseUrl: kernelBaseUrl,
-      body: body2,
-      timeoutMs,
-      agentOwner: String(agentOwner || ""),
-      logger
-    });
-    logger.ok(shouldPost ? "Handoff complete; kernel will edit placeholder." : "Read-only invocation completed.");
+    const shouldDispatch = String(process.env.UOS_AGENT_DISPATCH ?? env.UOS_AGENT_DISPATCH ?? "1").trim() !== "0";
+    if (!shouldDispatch) {
+      logPayloadIfEnabled({ logger, payload, task, inputs: {} });
+      logger.info("[agent] Dispatch disabled via UOS_AGENT_DISPATCH=0.");
+      return;
+    }
+    const { inputs } = await dispatchAgentWorkflow({ context, task, logger });
+    logPayloadIfEnabled({ logger, payload, task, inputs });
+    await maybeWriteRuntimeLogs({ task, inputs, payload, logger });
+    logger.ok("Agent workflow dispatch complete.");
   } catch (error) {
-    logger.error(`Kernel codex error: ${String(error)}`);
+    logger.error(`Agent dispatch error: ${String(error)}`);
   }
 }
 var init_codex_agent = __esm({
   "src/handlers/codex-agent/index.ts"() {
     "use strict";
     init_esm_shims();
-    init_config();
     init_prompt();
     init_github();
-    init_pi();
+    init_agent_dispatch();
     init_logs();
   }
 });
