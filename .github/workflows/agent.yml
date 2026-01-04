@@ -2881,7 +2881,11 @@ jobs:
             execFileSync("gh", args, { stdio: "inherit", env: process.env });
           }
 
-          const summary = summaryPath && fs.existsSync(summaryPath) ? fs.readFileSync(summaryPath, "utf8").trim() : "";
+          const summaryRaw = summaryPath && fs.existsSync(summaryPath) ? fs.readFileSync(summaryPath, "utf8").trim() : "";
+          const summary = summaryRaw
+            .replace(/<!--\s*pa:ai\s*-->/gi, "")
+            .replace(/<!--|-->/g, "")
+            .trim();
 
           const updatedAt = new Date().toISOString();
           const blockLines = [
