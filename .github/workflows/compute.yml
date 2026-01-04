@@ -17,6 +17,8 @@ on:
         description: "Ref"
       signature:
         description: "The kernel signature"
+      ubiquityKernelToken:
+        description: "Kernel attestation token (optional)"
       command:
         description: "Command from the Kernel"
         required: false
