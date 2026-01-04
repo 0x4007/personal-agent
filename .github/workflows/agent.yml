@@ -66,8 +66,6 @@ jobs:
       kernel_refresh_url: ${{ steps.parse.outputs.kernel_refresh_url }}
       kernel_refresh_interval_seconds: ${{ steps.parse.outputs.kernel_refresh_interval_seconds }}
       config_path_candidates: ${{ steps.parse.outputs.config_path_candidates }}
-      marketplace_org: ${{ steps.parse.outputs.marketplace_org }}
-      marketplace_auth_token: ${{ steps.parse.outputs.marketplace_auth_token }}
       is_pull_request: ${{ steps.parse.outputs.is_pull_request }}
       task: ${{ steps.parse.outputs.task }}
 
@@ -196,8 +194,6 @@ jobs:
           const configPathCandidates = Array.isArray(settings.configPathCandidates)
             ? settings.configPathCandidates.filter((p) => typeof p === "string")
             : [];
-          const marketplaceOrg = typeof settings.marketplaceOrg === "string" ? settings.marketplaceOrg : "ubiquity-os-marketplace";
-          const marketplaceAuthToken = typeof settings.marketplaceAuthToken === "string" ? settings.marketplaceAuthToken : "";
 
           const repo = payload?.repository?.full_name ?? "";
           const [repoOwner, repoName] = typeof repo === "string" && repo.includes("/") ? repo.split("/", 2) : ["", ""];
@@ -291,17 +287,10 @@ jobs:
           setOutput("kernel_refresh_url", kernelRefreshUrl);
           setOutput("kernel_refresh_interval_seconds", String(kernelRefreshIntervalSeconds));
           setOutput("config_path_candidates", JSON.stringify(configPathCandidates));
-          setOutput("marketplace_org", marketplaceOrg);
-          setOutput("marketplace_auth_token", marketplaceAuthToken);
           setOutput("is_pull_request", String(isPullRequest));
 
           fs.appendFileSync(process.env.GITHUB_OUTPUT, outputLines.join(""));
           NODE
-
-      - name: Mask marketplace token
-        if: steps.parse.outputs.marketplace_auth_token != ''
-        run: |
-          echo "::add-mask::${{ steps.parse.outputs.marketplace_auth_token }}"
 
       - name: Comment (rejected)
         if: steps.parse.outputs.allowed != 'true' && steps.parse.outputs.repo != '' && steps.parse.outputs.issue_number != ''
@@ -2566,8 +2555,6 @@ jobs:
           const configPathCandidates = Array.isArray(settings.configPathCandidates)
             ? settings.configPathCandidates.filter((p) => typeof p === "string")
             : [];
-          const marketplaceOrg = typeof settings.marketplaceOrg === "string" ? settings.marketplaceOrg : "ubiquity-os-marketplace";
-          const marketplaceAuthToken = typeof settings.marketplaceAuthToken === "string" ? settings.marketplaceAuthToken : "";
 
           const repo = payload.repository?.full_name ?? "";
           const [repoOwner, repoName] = typeof repo === "string" && repo.includes("/") ? repo.split("/", 2) : ["", ""];
@@ -2648,17 +2635,10 @@ jobs:
           setOutput("kernel_refresh_url", kernelRefreshUrl);
           setOutput("kernel_refresh_interval_seconds", String(kernelRefreshIntervalSeconds));
           setOutput("config_path_candidates", JSON.stringify(configPathCandidates));
-          setOutput("marketplace_org", marketplaceOrg);
-          setOutput("marketplace_auth_token", marketplaceAuthToken);
           setOutput("is_pull_request", String(isPullRequest));
 
           fs.appendFileSync(process.env.GITHUB_OUTPUT, outputLines.join(""));
           NODE
-
-      - name: Mask marketplace token
-        if: steps.parse.outputs.marketplace_auth_token != ''
-        run: |
-          echo "::add-mask::${{ steps.parse.outputs.marketplace_auth_token }}"
 
       - name: Initialize token refresh
         if: steps.parse.outputs.allowed == 'true' && inputs.ubiquityKernelToken != '' && steps.parse.outputs.kernel_refresh_url != ''
@@ -3062,40 +3042,6 @@ jobs:
           fs.writeFileSync(".ubiquityos.issue.md", markdown);
           NODE
 
-      - name: Fetch marketplace plugin registry (best-effort)
-        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
-        continue-on-error: true
-        env:
-          MARKETPLACE_ORG: ${{ steps.parse.outputs.marketplace_org }}
-        run: |
-          node <<'NODE'
-          const fs = require("node:fs");
-
-          const org = String(process.env.MARKETPLACE_ORG || "").trim() || "ubiquity-os-marketplace";
-          const outPath = ".ubiquityos.marketplace.json";
-
-          const registryRepo = `${org}/.ubiquity-os`;
-          const registryPath = ".github/ubiquity-os-marketplace.plugin-registry.json";
-          const url = `https://raw.githubusercontent.com/${registryRepo}/main/${registryPath}`;
-
-          async function run() {
-            const res = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "ubiquityos-agent" } });
-            if (!res.ok) {
-              const text = await res.text().catch(() => "");
-              throw new Error(`${res.status} ${text.slice(0, 2000)}`);
-            }
-            const raw = await res.text();
-            fs.writeFileSync(outPath, raw);
-            process.stdout.write(`Marketplace registry fetched: ${url}\\n`);
-          }
-
-          run().catch((error) => {
-            const message = error instanceof Error ? error.message : String(error);
-            process.stderr.write(`Marketplace registry fetch failed: ${message}\\n`);
-            process.exitCode = 0;
-          });
-          NODE
-
       - name: Write agent prompt
         if: steps.parse.outputs.allowed == 'true'
         env:
@@ -3132,7 +3078,6 @@ jobs:
             Array.isArray(configPathCandidates) && configPathCandidates.length
               ? `- Config path candidates (edit the active one): ${configPathCandidates.join(", ")}`
               : null,
-            "- If present, the marketplace plugin registry is in `.ubiquityos.marketplace.json` (best-effort; may be empty if access is unavailable).",
           ].filter(Boolean);
 
           const operationsLines = privileged
