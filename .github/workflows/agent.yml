@@ -2855,6 +2855,7 @@ jobs:
             privileged
               ? "- Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted on the triggering thread)."
               : "- Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted as the visible issue/PR comment).",
+            "- Append `<!-- pa:ai -->` to any comment you post (used to filter personal-agent output from style samples).",
             "- Do NOT include run-log URLs or restate the full task in your `comment`; the workflow tracks run logs and status separately.",
           ];
 
@@ -3415,6 +3416,11 @@ jobs:
           if [ -z "${reply//[[:space:]]/}" ]; then
             echo "No agent reply to post."
             exit 0
+          fi
+
+          marker="<!-- pa:ai -->"
+          if ! printf "%s" "$reply" | grep -Fq "pa:ai"; then
+            reply="$(printf "%s\n\n%s\n" "$reply" "$marker")"
           fi
 
           gh issue comment "$issue_number" --repo "$repo" --body "$reply"
