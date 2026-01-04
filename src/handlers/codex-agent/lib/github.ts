@@ -203,6 +203,7 @@ export async function fetchRepoLabels(params: {
 type StyleNode = {
   body?: string;
   createdAt?: string;
+  updatedAt?: string;
   url?: string;
   repository?: { nameWithOwner?: string };
 };
@@ -231,14 +232,14 @@ type IssueComment = {
 
 const STYLE_CACHE_VERSION = 1;
 const DEFAULT_STYLE_CACHE_MARKER = "pa:style-cache";
+const DEFAULT_REPLY_MARKER = "pa:ai";
+const SENSITIVE_PATTERNS = [/-----BEGIN [A-Z ]*PRIVATE KEY-----/i, /private_key/i];
 
-const STYLE_QUERY = `query($login: String!, $from: DateTime!, $to: DateTime!, $cursor: String) {
+const STYLE_QUERY = `query($login: String!, $cursor: String) {
   user(login: $login) {
-    contributionsCollection(from: $from, to: $to) {
-      issueComments(first: 50, after: $cursor) {
-        nodes { body createdAt url repository { nameWithOwner } }
-        pageInfo { hasNextPage endCursor }
-      }
+    issueComments(first: 50, after: $cursor, orderBy: { field: UPDATED_AT, direction: DESC }) {
+      nodes { body createdAt updatedAt url repository { nameWithOwner } }
+      pageInfo { hasNextPage endCursor }
     }
   }
 }`;
@@ -292,6 +293,33 @@ function truncate(value: string | undefined, maxChars: number): string | undefin
   if (!value) return value;
   if (value.length <= maxChars) return value;
   return value.slice(0, maxChars).trimEnd() + "...";
+}
+
+function looksSensitive(value: string): boolean {
+  return SENSITIVE_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function parseDateMs(value: string | undefined): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function isPastLookback(updatedAtMs: number | null, minUpdatedAtMs: number | null): boolean {
+  if (minUpdatedAtMs === null || updatedAtMs === null) return false;
+  return updatedAtMs < minUpdatedAtMs;
+}
+
+function shouldSkipStyleBody(body: string, markers: string[]): boolean {
+  if (markers.some((marker) => marker && body.includes(marker))) return true;
+  return looksSensitive(body);
+}
+
+function normalizeStyleBody(body: string, maxChars: number): string | null {
+  const normalized = body.replace(/\s+/g, " ").trim();
+  if (normalized.length < 40) return null;
+  const trimmed = truncate(normalized, maxChars);
+  return trimmed || null;
 }
 
 function normalizeStyleExamples(raw: unknown, maxChars: number): StyleExample[] {
@@ -358,14 +386,25 @@ function getStyleCacheConfig(): {
   };
 }
 
-function appendStyleExamples(nodes: StyleNode[], examples: StyleExample[], limit: number, marker: string, maxChars: number): void {
+function appendStyleExamples(
+  nodes: StyleNode[],
+  examples: StyleExample[],
+  limit: number,
+  markers: string[],
+  maxChars: number,
+  minUpdatedAtMs: number | null
+): { hasReachedLookback: boolean } {
+  let hasReachedLookback = false;
   for (const node of nodes) {
+    const updatedAtMs = parseDateMs(node?.updatedAt) ?? parseDateMs(node?.createdAt);
+    if (isPastLookback(updatedAtMs, minUpdatedAtMs)) {
+      hasReachedLookback = true;
+      continue;
+    }
     const body = (node?.body ?? "").trim();
     if (!body) continue;
-    if (marker && body.includes(marker)) continue;
-    const normalized = body.replace(/\s+/g, " ").trim();
-    if (normalized.length < 40) continue;
-    const trimmed = truncate(normalized, maxChars);
+    if (shouldSkipStyleBody(body, markers)) continue;
+    const trimmed = normalizeStyleBody(body, maxChars);
     if (!trimmed) continue;
     examples.push({
       body: trimmed,
@@ -375,11 +414,12 @@ function appendStyleExamples(nodes: StyleNode[], examples: StyleExample[], limit
     });
     if (examples.length >= limit) break;
   }
+  return { hasReachedLookback };
 }
 
 async function fetchStylePage(params: {
   headers: Record<string, string>;
-  variables: { login: string; from: string; to: string; cursor: string | null };
+  variables: { login: string; cursor: string | null };
   logger: { info: (...args: unknown[]) => unknown };
 }): Promise<StylePage | null> {
   const { headers, variables, logger } = params;
@@ -398,17 +438,15 @@ async function fetchStylePage(params: {
   const json = (await resp.json()) as {
     data?: {
       user?: {
-        contributionsCollection?: {
-          issueComments?: {
-            nodes?: StyleNode[];
-            pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
-          };
+        issueComments?: {
+          nodes?: StyleNode[];
+          pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
         };
       };
     };
   };
 
-  const issueComments = json.data?.user?.contributionsCollection?.issueComments;
+  const issueComments = json.data?.user?.issueComments;
   return {
     nodes: issueComments?.nodes ?? [],
     pageInfo: issueComments?.pageInfo ?? {},
@@ -418,33 +456,33 @@ async function fetchStylePage(params: {
 async function collectStyleExamples(params: {
   login: string;
   from: Date;
-  to: Date;
   headers: Record<string, string>;
   limit: number;
   marker: string;
   maxChars: number;
   logger: { info: (...args: unknown[]) => unknown };
 }): Promise<StyleExample[]> {
-  const { login, from, to, headers, limit, marker, maxChars, logger } = params;
+  const { login, from, headers, limit, marker, maxChars, logger } = params;
   const examples: StyleExample[] = [];
   let cursor: string | null = null;
   let hasNext = true;
+  const markers = [marker, DEFAULT_REPLY_MARKER].filter(Boolean);
+  const minUpdatedAtMs = Number.isFinite(from.getTime()) ? from.getTime() : null;
 
   while (hasNext && examples.length < limit) {
     const page = await fetchStylePage({
       headers,
       variables: {
         login,
-        from: from.toISOString(),
-        to: to.toISOString(),
         cursor,
       },
       logger,
     });
     if (!page) return examples;
-    appendStyleExamples(page.nodes, examples, limit, marker, maxChars);
+    const { hasReachedLookback } = appendStyleExamples(page.nodes, examples, limit, markers, maxChars, minUpdatedAtMs);
     hasNext = Boolean(page.pageInfo.hasNextPage);
     cursor = page.pageInfo.endCursor ?? null;
+    if (hasReachedLookback) break;
   }
 
   return examples.slice(0, limit);
@@ -604,7 +642,6 @@ export async function fetchStyleExamples(params: { login: string; token: string;
   const examples = await collectStyleExamples({
     login,
     from,
-    to: maxDate,
     headers,
     limit,
     marker,
