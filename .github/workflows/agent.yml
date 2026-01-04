@@ -504,7 +504,8 @@ jobs:
           const buildReasoningText = (item) => {
             const summary = normalizeInputText(item.summary);
             const content = normalizeInputText(item.content);
-            return summary || content || "";
+            const encrypted = normalizeInputText(item.encrypted_content);
+            return summary || content || encrypted || "";
           };
           
           const rewriteResponsesBody = (body) => {
@@ -568,8 +569,7 @@ jobs:
               }
               if (type === "reasoning") {
                 const text = buildReasoningText(item);
-                if (!text) throw new Error("Invalid reasoning item");
-                normalized.push(toMessage(`Reasoning: ${text}`));
+                if (text) normalized.push(toMessage(`Reasoning: ${text}`));
                 stats.reasoning += 1;
                 continue;
               }
@@ -703,6 +703,7 @@ jobs:
           server.listen(port, "127.0.0.1", () => {
             process.stdout.write(`ubq-responses-forwarder listening on 127.0.0.1:${port}\n`);
           });
+          
           NODE
 
           node "$RUNNER_TEMP/ubq-responses-forwarder.js" > "$RUNNER_TEMP/ubq_responses_forwarder.log" 2>&1 &
@@ -1214,7 +1215,8 @@ jobs:
           const buildReasoningText = (item) => {
             const summary = normalizeInputText(item.summary);
             const content = normalizeInputText(item.content);
-            return summary || content || "";
+            const encrypted = normalizeInputText(item.encrypted_content);
+            return summary || content || encrypted || "";
           };
           
           const rewriteResponsesBody = (body) => {
@@ -1278,8 +1280,7 @@ jobs:
               }
               if (type === "reasoning") {
                 const text = buildReasoningText(item);
-                if (!text) throw new Error("Invalid reasoning item");
-                normalized.push(toMessage(`Reasoning: ${text}`));
+                if (text) normalized.push(toMessage(`Reasoning: ${text}`));
                 stats.reasoning += 1;
                 continue;
               }
@@ -1413,6 +1414,7 @@ jobs:
           server.listen(port, "127.0.0.1", () => {
             process.stdout.write(`ubq-responses-forwarder listening on 127.0.0.1:${port}\n`);
           });
+          
           NODE
 
           node "$RUNNER_TEMP/ubq-responses-forwarder.js" > "$RUNNER_TEMP/ubq_responses_forwarder.log" 2>&1 &
@@ -2084,7 +2086,8 @@ jobs:
           const buildReasoningText = (item) => {
             const summary = normalizeInputText(item.summary);
             const content = normalizeInputText(item.content);
-            return summary || content || "";
+            const encrypted = normalizeInputText(item.encrypted_content);
+            return summary || content || encrypted || "";
           };
           
           const rewriteResponsesBody = (body) => {
@@ -2148,8 +2151,7 @@ jobs:
               }
               if (type === "reasoning") {
                 const text = buildReasoningText(item);
-                if (!text) throw new Error("Invalid reasoning item");
-                normalized.push(toMessage(`Reasoning: ${text}`));
+                if (text) normalized.push(toMessage(`Reasoning: ${text}`));
                 stats.reasoning += 1;
                 continue;
               }
@@ -2283,6 +2285,7 @@ jobs:
           server.listen(port, "127.0.0.1", () => {
             process.stdout.write(`ubq-responses-forwarder listening on 127.0.0.1:${port}\n`);
           });
+          
           NODE
 
           node "$RUNNER_TEMP/ubq-responses-forwarder.js" > "$RUNNER_TEMP/ubq_responses_forwarder.log" 2>&1 &
@@ -3338,7 +3341,8 @@ jobs:
           const buildReasoningText = (item) => {
             const summary = normalizeInputText(item.summary);
             const content = normalizeInputText(item.content);
-            return summary || content || "";
+            const encrypted = normalizeInputText(item.encrypted_content);
+            return summary || content || encrypted || "";
           };
           
           const rewriteResponsesBody = (body) => {
@@ -3402,8 +3406,7 @@ jobs:
               }
               if (type === "reasoning") {
                 const text = buildReasoningText(item);
-                if (!text) throw new Error("Invalid reasoning item");
-                normalized.push(toMessage(`Reasoning: ${text}`));
+                if (text) normalized.push(toMessage(`Reasoning: ${text}`));
                 stats.reasoning += 1;
                 continue;
               }
@@ -3537,6 +3540,7 @@ jobs:
           server.listen(port, "127.0.0.1", () => {
             process.stdout.write(`ubq-responses-forwarder listening on 127.0.0.1:${port}\n`);
           });
+          
           NODE
 
           node "$RUNNER_TEMP/ubq-responses-forwarder.js" > "$RUNNER_TEMP/ubq_responses_forwarder.log" 2>&1 &
