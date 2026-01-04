@@ -1,5 +1,6 @@
 {
   "name": "Personal Agent",
+  "short_name": "0x4007/personal-agent",
   "description": "Personal agent processes commands from UbiquityOS in user's Github actions",
   "ubiquity:listeners": ["issue_comment.created"],
   "configuration": {
