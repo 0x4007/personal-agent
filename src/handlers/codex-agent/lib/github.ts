@@ -17,17 +17,16 @@ type VectorDbConfig = {
 
 export async function maybePrefetchContext(args: {
   logger: { info: (...args: unknown[]) => unknown };
-  isSelf: boolean | null | undefined;
   owner: string;
   repo: string;
   issueNumber: number;
   isPr: boolean;
 }): Promise<unknown> {
-  const { logger, isSelf, owner, repo, issueNumber, isPr } = args;
+  const { logger, owner, repo, issueNumber, isPr } = args;
   const isPrefetchEnabled = (process.env.PROMPT_FETCH_ISSUE ?? "1") === "1";
   if (!isPrefetchEnabled) return null;
   try {
-    const token = selectPatToken({ isSelf: Boolean(isSelf) });
+    const token = selectPatToken();
     return await fetchIssueContext({ owner, repo, issueNumber, isPr, token });
   } catch (e) {
     logger.info("[codexAgent] Prefetch failed (non-fatal)", { error: String(e) });
@@ -69,14 +68,13 @@ export async function createGithubComment(
 
 export async function maybeCreatePlaceholderComment(args: {
   logger: { info: (...a: unknown[]) => unknown };
-  isSelf: boolean | null | undefined;
   owner: string;
   repo: string;
   issueNumber: number;
 }): Promise<number | null> {
-  const { logger, isSelf, owner, repo, issueNumber } = args;
+  const { logger, owner, repo, issueNumber } = args;
   try {
-    const token = selectPatToken({ isSelf: Boolean(isSelf) });
+    const token = selectPatToken();
     const placeholder = "Thinking...";
     const created = await createGithubComment(
       {
@@ -1144,7 +1142,7 @@ export async function maybeFetchStyleExamples(args: {
   if (!isStyleFetchEnabled) return [];
   if (!login) return [];
   try {
-    const token = selectPatToken({ isSelf: true });
+    const token = selectPatToken();
     if (!token) return [];
     return await fetchStyleExamples({ login, owner, repo, token, logger });
   } catch (error) {

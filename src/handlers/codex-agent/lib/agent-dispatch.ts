@@ -1,8 +1,9 @@
 import { brotliCompressSync } from "node:zlib";
 import { randomUUID } from "node:crypto";
+import { customOctokit } from "@ubiquity-os/plugin-sdk/octokit";
 import { Context } from "../../../types";
+import { requirePatToken } from "./config";
 import { safeStringify } from "./utils";
-import { selectWriteToken } from "./config";
 
 const CONFIG_FULL_PATH = ".github/.ubiquity-os.config.yml";
 const DEV_CONFIG_FULL_PATH = ".github/.ubiquity-os.config.dev.yml";
@@ -76,11 +77,8 @@ function resolveAgentTarget(env: Context["env"]): AgentTarget {
   return { owner, repo, workflowId, ref: ref || undefined };
 }
 
-async function getDefaultBranch(context: Context, owner: string, repo: string): Promise<string> {
-  if (!context.octokit) {
-    throw new Error("Missing octokit; cannot resolve default branch.");
-  }
-  const response = await context.octokit.rest.repos.get({ owner, repo });
+async function getDefaultBranch(octokit: InstanceType<typeof customOctokit>, owner: string, repo: string): Promise<string> {
+  const response = await octokit.rest.repos.get({ owner, repo });
   return response.data.default_branch;
 }
 
@@ -105,16 +103,11 @@ export async function dispatchAgentWorkflow(args: {
 }): Promise<AgentDispatchResult> {
   const { context, task, logger, settingsOverrides } = args;
 
-  if (!context.octokit) {
-    throw new Error("Missing octokit; cannot dispatch workflow.");
-  }
-  const authToken = String(selectWriteToken() || context.authToken || "").trim();
-  if (!authToken) {
-    throw new Error("Missing authToken for agent workflow dispatch.");
-  }
+  const { token: authToken, source: tokenSource } = requirePatToken({ purpose: "agent dispatch" });
+  const octokit = new customOctokit({ auth: authToken });
 
   const target = resolveAgentTarget(context.env);
-  const ref = target.ref || (await getDefaultBranch(context, target.owner, target.repo));
+  const ref = target.ref || (await getDefaultBranch(octokit, target.owner, target.repo));
   const stateId = randomUUID();
   const settings = buildAgentSettings(context, settingsOverrides);
   const eventPayload = compressString(safeStringify(context.payload ?? {}));
@@ -132,8 +125,8 @@ export async function dispatchAgentWorkflow(args: {
     signature: "",
   };
 
-  logger.info("[agent] Dispatching workflow", { owner: target.owner, repo: target.repo, workflow: target.workflowId, ref });
-  await context.octokit.rest.actions.createWorkflowDispatch({
+  logger.info("[agent] Dispatching workflow", { owner: target.owner, repo: target.repo, workflow: target.workflowId, ref, tokenSource });
+  await octokit.rest.actions.createWorkflowDispatch({
     owner: target.owner,
     repo: target.repo,
     workflow_id: target.workflowId,

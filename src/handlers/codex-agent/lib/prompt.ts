@@ -80,10 +80,9 @@ export async function buildFullPrompt(args: {
   fetchedContext: unknown;
   owner: string;
   repo: string;
-  isSelf: boolean | null | undefined;
   logger: { info: (...a: unknown[]) => unknown };
 }): Promise<{ prompt: string; eventJson: string; contextJson: string; isMinimal: boolean }> {
-  const { richPrompt, command, payload, fetchedContext, owner, repo, isSelf, logger } = args;
+  const { richPrompt, command, payload, fetchedContext, owner, repo, logger } = args;
   const minimalPrompt = command;
   const isMinimal = process.env.PROMPT_MINIMAL === "1" || process.env.UOS_PROMPT_MINIMAL === "1" || process.env.PI_MINIMAL === "1";
   const doesIncludeEventJson = process.env.PROMPT_INCLUDE_EVENT === "1" || process.env.INCLUDE_GH_EVENT === "1";
@@ -104,7 +103,7 @@ export async function buildFullPrompt(args: {
   }
   if (shouldFetchLabels) {
     try {
-      const token = selectPatToken({ isSelf: Boolean(isSelf) });
+      const token = selectPatToken();
       const repoLabels = await fetchRepoLabels({ owner, repo, token });
       if (repoLabels.length) {
         const labelsJson = safeStringify(repoLabels);

@@ -7,6 +7,26 @@ import { resolveConversationKeyForContext } from "./lib/conversation-graph";
 import { dispatchAgentWorkflow } from "./lib/agent-dispatch";
 import { logPayloadIfEnabled, maybeWriteRuntimeLogs } from "./lib/logs";
 
+function formatDispatchError(error: unknown): { message: string; status?: number; url?: string; name?: string; documentationUrl?: string } {
+  if (!error || typeof error !== "object") {
+    return { message: String(error) };
+  }
+  const err = error as {
+    message?: unknown;
+    status?: unknown;
+    name?: unknown;
+    request?: { url?: unknown };
+    documentation_url?: unknown;
+  };
+  return {
+    message: typeof err.message === "string" ? err.message : String(error),
+    status: typeof err.status === "number" ? err.status : undefined,
+    name: typeof err.name === "string" ? err.name : undefined,
+    url: typeof err.request?.url === "string" ? err.request.url : undefined,
+    documentationUrl: typeof err.documentation_url === "string" ? err.documentation_url : undefined,
+  };
+}
+
 /**
  * Dispatches the kernel agent workflow with a prompt customized to the owner.
  *
@@ -122,6 +142,7 @@ export async function codexAgent(context: Context): Promise<void> {
     await maybeWriteRuntimeLogs({ task, inputs, payload, logger });
     logger.ok("Agent workflow dispatch complete.");
   } catch (error) {
-    logger.error(`Agent dispatch error: ${String(error)}`);
+    logger.error("Agent dispatch error", formatDispatchError(error));
+    throw error;
   }
 }

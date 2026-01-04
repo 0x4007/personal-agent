@@ -3,7 +3,7 @@ import { isIssueCommentEvent } from "./types/typeguards";
 import fs from "node:fs";
 import { brotliDecompressSync } from "node:zlib";
 import { customOctokit } from "@ubiquity-os/plugin-sdk/octokit";
-import { selectWriteToken } from "./handlers/codex-agent/lib/config";
+import { requirePatToken } from "./handlers/codex-agent/lib/config";
 
 type CodexAgent = typeof import("./handlers/codex-agent") extends { codexAgent: infer Fn } ? Fn : never;
 
@@ -122,21 +122,22 @@ async function mainFromActionsEnv() {
       },
     };
 
-    const writeToken = selectWriteToken();
-    const effectiveToken = writeToken || authToken;
-    const octokit = new customOctokit({ auth: effectiveToken || undefined });
+    const { token: writeToken, source: tokenSource } = requirePatToken({ purpose: "GitHub API access" });
+    const octokit = new customOctokit({ auth: writeToken });
     const context: Record<string, unknown> = {
       eventName,
       payload,
       env: process.env,
       logger,
       commentHandler: { postComment: async () => null },
-      authToken: effectiveToken,
+      authToken: writeToken,
       ubiquityKernelToken,
       config,
       command,
       octokit,
     };
+
+    logger.info("[auth] Using PAT for GitHub API", { tokenSource, kernelAuthProvided: Boolean(authToken) });
 
     await runPlugin(context as Context);
   } catch (e) {
