@@ -1776,6 +1776,108 @@ function buildHeaders(token) {
     "x-github-api-version": "2022-11-28"
   };
 }
+function normalizeStyleSource(value) {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "vector-db" || normalized === "vector" || normalized === "vectordb") return "vector-db";
+  if (normalized === "github" || normalized === "gh") return "github";
+  return null;
+}
+function normalizeRepoKey(value) {
+  return (value ?? "").trim().toLowerCase();
+}
+function isSameRepo(params) {
+  const { owner, repo, candidateFull, candidateOwner, candidateName } = params;
+  const target = normalizeRepoKey(`${owner}/${repo}`);
+  return candidateFull && normalizeRepoKey(candidateFull) === target || candidateOwner && candidateName && normalizeRepoKey(`${candidateOwner}/${candidateName}`) === target;
+}
+function getStyleSourceOrder() {
+  const raw = (getEnvString(["PROMPT_STYLE_SOURCE", "UOS_STYLE_SOURCE"], "github") ?? "github").trim().toLowerCase();
+  if (raw === "auto") return { order: ["vector-db", "github"], raw };
+  const normalized = normalizeStyleSource(raw);
+  if (normalized) return { order: [normalized], raw: normalized };
+  return { order: ["github"], raw: "github" };
+}
+function getVectorDbConfig() {
+  const rawUrl = getEnvString(["UOS_VECTOR_DB_URL", "SUPABASE_URL"]);
+  const rawKey = getEnvString(["UOS_VECTOR_DB_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_KEY", "SUPABASE_ANON_KEY"]);
+  const projectId = getEnvString(["SUPABASE_PROJECT_ID"]);
+  const trimmedUrl = rawUrl?.trim() ?? "";
+  const trimmedProject = projectId?.trim() ?? "";
+  let url = "";
+  if (trimmedUrl) {
+    url = trimmedUrl.replace(/\/+$/, "");
+  } else if (trimmedProject) {
+    url = `https://${trimmedProject}.supabase.co`;
+  }
+  const key = rawKey?.trim() ?? "";
+  if (!url || !key) return null;
+  return { url, key };
+}
+function buildVectorDbHeaders(config) {
+  return {
+    apikey: config.key,
+    Authorization: `Bearer ${config.key}`,
+    "Content-Type": "application/json"
+  };
+}
+function buildVectorDbUrl(params) {
+  const { config, authorId, docTypes, from, maxDate, limit, offset } = params;
+  const select = "id,doc_type,markdown,author_id,created_at,modified_at,payload";
+  const query = [];
+  query.push(`select=${encodeURIComponent(select)}`);
+  query.push(`author_id=eq.${encodeURIComponent(String(authorId))}`);
+  if (docTypes.length > 0) {
+    const inList = docTypes.map((docType) => encodeURIComponent(docType)).join(",");
+    query.push(`doc_type=in.(${inList})`);
+  }
+  query.push("deleted_at=is.null");
+  query.push("markdown=not.is.null");
+  if (Number.isFinite(from.getTime())) {
+    query.push(`modified_at=gte.${encodeURIComponent(from.toISOString())}`);
+  }
+  if (Number.isFinite(maxDate.getTime())) {
+    query.push(`modified_at=lte.${encodeURIComponent(maxDate.toISOString())}`);
+  }
+  query.push("order=modified_at.desc");
+  query.push(`limit=${Math.max(1, Math.min(200, Math.floor(limit)))}`);
+  query.push(`offset=${Math.max(0, Math.floor(offset))}`);
+  return `${config.url}/rest/v1/documents?${query.join("&")}`;
+}
+async function fetchGithubUserId(params) {
+  const { login, token, logger } = params;
+  const trimmed = login.trim();
+  if (!trimmed || !token) return null;
+  const url = `https://api.github.com/users/${encodeURIComponent(trimmed)}`;
+  const resp = await fetch(url, { headers: buildHeaders(token) });
+  if (!resp.ok) {
+    const txt = await safeText(resp);
+    logger.info("[codexAgent] Style author lookup failed (non-fatal)", { status: resp.status, body: txt.slice(0, 200) });
+    return null;
+  }
+  const json = await resp.json();
+  const id = Number(json?.id);
+  if (!Number.isFinite(id)) return null;
+  return id;
+}
+function extractRepoFromPayload(payload) {
+  const info = extractRepoInfoFromPayload(payload);
+  if (info.fullName) return info.fullName;
+  if (info.owner && info.name) return `${info.owner}/${info.name}`;
+  return info.name;
+}
+function extractUrlFromPayload(payload) {
+  const comment = toObject(toObject(payload).comment);
+  const issue = toObject(toObject(payload).issue);
+  return toStringOrUndefined(comment.html_url) ?? toStringOrUndefined(issue.html_url) ?? toStringOrUndefined(toObject(payload).url);
+}
+function extractRepoInfoFromPayload(payload) {
+  const repo = toObject(toObject(payload).repository);
+  const fullName = toStringOrUndefined(repo.full_name) ?? toStringOrUndefined(repo.nameWithOwner);
+  const name = toStringOrUndefined(repo.name);
+  const owner = toStringOrUndefined(toObject(repo.owner).login) ?? toStringOrUndefined(toObject(repo.owner).name);
+  return { fullName, name, owner };
+}
 function getStyleCacheConfig() {
   const issueNumber = Math.floor(getEnvNumber(["PROMPT_STYLE_CACHE_ISSUE", "UOS_STYLE_CACHE_ISSUE"], 0));
   if (!Number.isFinite(issueNumber) || issueNumber <= 0) return null;
@@ -1797,7 +1899,30 @@ function getStyleCacheConfig() {
     shouldWriteCache
   };
 }
-function appendStyleExamples(nodes, examples, limit, markers, maxChars, minUpdatedAtMs) {
+function isStyleNodeInRepo(node, repoFilter) {
+  const repoName = node?.repository?.nameWithOwner;
+  return !repoFilter || isSameRepo({ owner: repoFilter.owner, repo: repoFilter.repo, candidateFull: repoName });
+}
+function getStyleNodeBody(node, markers, maxChars) {
+  const body = (node?.body ?? "").trim();
+  if (!body) return null;
+  if (shouldSkipStyleBody(body, markers)) return null;
+  return normalizeStyleBody(body, maxChars);
+}
+function getVectorRowBody(row, markers, maxChars) {
+  const body = typeof row.markdown === "string" ? row.markdown.trim() : "";
+  if (!body) return null;
+  if (shouldSkipStyleBody(body, markers)) return null;
+  return normalizeStyleBody(body, maxChars);
+}
+function isVectorRowInRepo(row, repoFilter) {
+  const info = extractRepoInfoFromPayload(row.payload);
+  return !repoFilter || isSameRepo({ owner: repoFilter.owner, repo: repoFilter.repo, candidateFull: info.fullName, candidateOwner: info.owner, candidateName: info.name });
+}
+function isUpdatedWithinBounds(updatedAtMs, minUpdatedAtMs, maxUpdatedAtMs) {
+  return !(minUpdatedAtMs !== null && updatedAtMs !== null && updatedAtMs < minUpdatedAtMs || maxUpdatedAtMs !== null && updatedAtMs !== null && updatedAtMs > maxUpdatedAtMs);
+}
+function appendStyleExamples(nodes, examples, limit, markers, maxChars, minUpdatedAtMs, repoFilter) {
   let hasReachedLookback = false;
   for (const node of nodes) {
     const updatedAtMs = parseDateMs(node?.updatedAt) ?? parseDateMs(node?.createdAt);
@@ -1805,10 +1930,8 @@ function appendStyleExamples(nodes, examples, limit, markers, maxChars, minUpdat
       hasReachedLookback = true;
       continue;
     }
-    const body = (node?.body ?? "").trim();
-    if (!body) continue;
-    if (shouldSkipStyleBody(body, markers)) continue;
-    const trimmed = normalizeStyleBody(body, maxChars);
+    if (!isStyleNodeInRepo(node, repoFilter)) continue;
+    const trimmed = getStyleNodeBody(node, markers, maxChars);
     if (!trimmed) continue;
     examples.push({
       body: trimmed,
@@ -1840,7 +1963,7 @@ async function fetchStylePage(params) {
   };
 }
 async function collectStyleExamples(params) {
-  const { login, from, headers, limit, marker, maxChars, logger } = params;
+  const { login, from, headers, limit, marker, maxChars, repoFilter, logger } = params;
   const examples = [];
   let cursor = null;
   let hasNext = true;
@@ -1856,10 +1979,85 @@ async function collectStyleExamples(params) {
       logger
     });
     if (!page) return examples;
-    const { hasReachedLookback } = appendStyleExamples(page.nodes, examples, limit, markers, maxChars, minUpdatedAtMs);
+    const { hasReachedLookback } = appendStyleExamples(page.nodes, examples, limit, markers, maxChars, minUpdatedAtMs, repoFilter);
     hasNext = Boolean(page.pageInfo.hasNextPage);
     cursor = page.pageInfo.endCursor ?? null;
     if (hasReachedLookback) break;
+  }
+  return examples.slice(0, limit);
+}
+function parseVectorDbRow(value) {
+  if (!value || typeof value !== "object") return null;
+  const obj = toObject(value);
+  const markdown = typeof obj.markdown === "string" ? obj.markdown : null;
+  return {
+    id: toStringOrUndefined(obj.id),
+    markdown,
+    created_at: toStringOrUndefined(obj.created_at),
+    modified_at: toStringOrUndefined(obj.modified_at),
+    payload: obj.payload ?? null
+  };
+}
+function appendVectorStyleExamples(params) {
+  const { rows, examples, limit, markers, maxChars, minUpdatedAtMs, maxUpdatedAtMs, repoFilter } = params;
+  for (const row of rows) {
+    if (examples.length >= limit) break;
+    const trimmed = getVectorRowBody(row, markers, maxChars);
+    if (!trimmed) continue;
+    if (!isVectorRowInRepo(row, repoFilter)) continue;
+    const updatedAt = row.modified_at ?? row.created_at;
+    const updatedAtMs = parseDateMs(updatedAt);
+    if (!isUpdatedWithinBounds(updatedAtMs, minUpdatedAtMs, maxUpdatedAtMs)) continue;
+    examples.push({
+      body: trimmed,
+      createdAt: updatedAt,
+      url: extractUrlFromPayload(row.payload),
+      repo: extractRepoFromPayload(row.payload)
+    });
+  }
+}
+async function collectStyleExamplesFromVectorDb(params) {
+  const { login, token, config, from, maxDate, limit, marker, maxChars, repoFilter, logger } = params;
+  const authorId = await fetchGithubUserId({ login, token, logger });
+  if (!authorId) return [];
+  const docTypes = ["issue_comment", "review_comment", "pull_request_review"];
+  const pageSize = Math.max(25, Math.min(200, Math.floor(limit * 4)));
+  const examples = [];
+  const markers = [marker, DEFAULT_REPLY_MARKER].filter(Boolean);
+  const minUpdatedAtMs = Number.isFinite(from.getTime()) ? from.getTime() : null;
+  const maxUpdatedAtMs = Number.isFinite(maxDate.getTime()) ? maxDate.getTime() : null;
+  let offset = 0;
+  while (examples.length < limit) {
+    const url = buildVectorDbUrl({
+      config,
+      authorId,
+      docTypes,
+      from,
+      maxDate,
+      limit: pageSize,
+      offset
+    });
+    const resp = await fetch(url, { headers: buildVectorDbHeaders(config) });
+    if (!resp.ok) {
+      const txt = await safeText(resp);
+      logger.info("[codexAgent] Vector DB style fetch failed (non-fatal)", { status: resp.status, body: txt.slice(0, 200) });
+      break;
+    }
+    const json = await resp.json();
+    if (!Array.isArray(json) || json.length === 0) break;
+    const rows = json.map(parseVectorDbRow).filter((row) => Boolean(row));
+    appendVectorStyleExamples({
+      rows,
+      examples,
+      limit,
+      markers,
+      maxChars,
+      minUpdatedAtMs,
+      maxUpdatedAtMs,
+      repoFilter
+    });
+    offset += json.length;
+    if (json.length < pageSize) break;
   }
   return examples.slice(0, limit);
 }
@@ -1903,25 +2101,31 @@ function parseStyleCacheComment(body, markerRegex, maxChars) {
   const obj = toObject(parsed);
   const examples = normalizeStyleExamples(obj.examples, maxChars);
   if (!examples.length) return null;
+  const source = normalizeStyleSource(toStringOrUndefined(obj.source));
   return {
     version: toNumber(obj.version),
     updatedAt: toStringOrUndefined(obj.updatedAt),
     login: toStringOrUndefined(obj.login),
+    repo: toStringOrUndefined(obj.repo),
     lookbackDays: toNumber(obj.lookbackDays),
     limit: toNumber(obj.limit),
     maxChars: toNumber(obj.maxChars),
+    source: source ?? void 0,
     examples
   };
 }
 function isStyleCacheUsable(cache, params) {
-  const { login, limit, lookbackDays, ttlMs } = params;
+  const { login, repo, limit, lookbackDays, ttlMs, source } = params;
   if (!cache.updatedAt) return false;
   const updatedAt = new Date(cache.updatedAt);
   if (Number.isNaN(updatedAt.getTime())) return false;
   if (Date.now() - updatedAt.getTime() > ttlMs) return false;
   if (!cache.login || cache.login.toLowerCase() !== login.toLowerCase()) return false;
+  if (!cache.repo || normalizeRepoKey(cache.repo) !== normalizeRepoKey(repo)) return false;
   if (!cache.lookbackDays || cache.lookbackDays !== lookbackDays) return false;
   if (!cache.limit || cache.limit < limit) return false;
+  const cacheSource = cache.source ?? "github";
+  if (cacheSource !== source) return false;
   return cache.examples.length > 0;
 }
 function buildStyleCacheBody(markerLabel, payload) {
@@ -1954,11 +2158,9 @@ async function upsertStyleCacheComment(params) {
     logger.info("[codexAgent] Style cache write failed (non-fatal)", { status: resp.status, body: txt.slice(0, 500) });
   }
 }
-async function fetchStyleExamples(params) {
-  const { login, token, logger } = params;
-  if (!token) return [];
+function getStyleFetchSettings(params) {
+  const { owner, repo } = params;
   const limit = Math.max(0, Math.min(50, Math.floor(getEnvNumber(["PROMPT_STYLE_EXAMPLES", "UOS_STYLE_EXAMPLES"], 12))));
-  if (limit === 0) return [];
   const maxChars = Math.max(120, Math.min(800, Math.floor(getEnvNumber(["PROMPT_STYLE_EXAMPLE_MAX_CHARS", "UOS_STYLE_EXAMPLE_MAX_CHARS"], 320))));
   const lookbackDays = Math.max(30, Math.min(3650, Math.floor(getEnvNumber(["PROMPT_STYLE_LOOKBACK_DAYS", "UOS_STYLE_LOOKBACK_DAYS"], 365))));
   const maxDateRaw = getEnvString(["PROMPT_STYLE_MAX_DATE", "UOS_STYLE_MAX_DATE"]);
@@ -1966,73 +2168,174 @@ async function fetchStyleExamples(params) {
   if (Number.isNaN(maxDate.getTime())) maxDate = /* @__PURE__ */ new Date();
   const from = new Date(maxDate.getTime() - lookbackDays * 24 * 60 * 60 * 1e3);
   const marker = getEnvString(["PROMPT_STYLE_CACHE_MARKER", "UOS_STYLE_CACHE_MARKER"], DEFAULT_STYLE_CACHE_MARKER) ?? DEFAULT_STYLE_CACHE_MARKER;
+  const repoFilter = owner && repo ? { owner, repo } : void 0;
+  const repoFullName = owner && repo ? `${owner}/${repo}` : "";
+  return {
+    limit,
+    maxChars,
+    lookbackDays,
+    maxDate,
+    from,
+    marker,
+    repoFilter,
+    repoFullName
+  };
+}
+async function loadStyleCache(params) {
+  const { token, maxChars, logger } = params;
   const cacheConfig = getStyleCacheConfig();
-  let cacheComment = null;
-  if (cacheConfig) {
-    const comments = await fetchIssueComments({
-      owner: cacheConfig.owner,
-      repo: cacheConfig.repo,
-      issueNumber: cacheConfig.issueNumber,
+  if (!cacheConfig) {
+    return { cacheConfig: null, cacheComment: null, cached: null };
+  }
+  const comments = await fetchIssueComments({
+    owner: cacheConfig.owner,
+    repo: cacheConfig.repo,
+    issueNumber: cacheConfig.issueNumber,
+    token,
+    logger
+  });
+  const cacheComment = findStyleCacheComment(comments, cacheConfig.markerRegex);
+  const cached = cacheComment?.body ? parseStyleCacheComment(cacheComment.body, cacheConfig.markerRegex, maxChars) : null;
+  return { cacheConfig, cacheComment, cached };
+}
+function getCachedStyleExamples(params) {
+  const { cached, cacheConfig, repoFullName, login, limit, lookbackDays, source } = params;
+  if (!cached || !cacheConfig || !repoFullName) return null;
+  if (!isStyleCacheUsable(cached, { login, repo: repoFullName, limit, lookbackDays, ttlMs: cacheConfig.ttlMs, source })) return null;
+  return cached.examples.slice(0, limit);
+}
+function canUseVectorDbSource(params) {
+  const { source, vectorConfig, raw, logger } = params;
+  if (source !== "vector-db") return true;
+  if (vectorConfig) return true;
+  if (raw === "vector-db") {
+    logger.info("[codexAgent] Vector DB style fetch skipped: missing config", { source });
+  }
+  return false;
+}
+async function fetchExamplesForSource(params) {
+  const { source, login, token, vectorConfig, from, maxDate, limit, marker, maxChars, repoFilter, headers, logger } = params;
+  if (source === "vector-db") {
+    if (!vectorConfig) return [];
+    return collectStyleExamplesFromVectorDb({
+      login,
       token,
+      config: vectorConfig,
+      from,
+      maxDate,
+      limit,
+      marker,
+      maxChars,
+      repoFilter,
       logger
     });
-    cacheComment = findStyleCacheComment(comments, cacheConfig.markerRegex);
-    if (cacheComment?.body) {
-      const cached = parseStyleCacheComment(cacheComment.body, cacheConfig.markerRegex, maxChars);
-      if (cached && isStyleCacheUsable(cached, { login, limit, lookbackDays, ttlMs: cacheConfig.ttlMs })) {
-        logger.info("[codexAgent] Style cache hit", {
-          count: cached.examples.length,
-          issue: `${cacheConfig.owner}/${cacheConfig.repo}#${cacheConfig.issueNumber}`
-        });
-        return cached.examples.slice(0, limit);
-      }
-    }
   }
-  const headers = buildHeaders(token);
-  const examples = await collectStyleExamples({
+  return collectStyleExamples({
     login,
     from,
     headers,
     limit,
     marker,
     maxChars,
+    repoFilter,
     logger
   });
-  if (cacheConfig?.shouldWriteCache) {
-    const payload = {
-      version: STYLE_CACHE_VERSION,
-      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+}
+async function maybeUpdateStyleCache(params) {
+  const { cacheConfig, cacheComment, token, payload, logger } = params;
+  if (!cacheConfig?.shouldWriteCache) return;
+  await upsertStyleCacheComment({
+    owner: cacheConfig.owner,
+    repo: cacheConfig.repo,
+    issueNumber: cacheConfig.issueNumber,
+    commentId: cacheComment?.id,
+    body: buildStyleCacheBody(cacheConfig.markerLabel, payload),
+    token,
+    logger
+  });
+  logger.info("[codexAgent] Style cache updated", {
+    count: payload.examples.length,
+    issue: `${cacheConfig.owner}/${cacheConfig.repo}#${cacheConfig.issueNumber}`,
+    source: payload.source
+  });
+}
+async function fetchStyleExamples(params) {
+  const { login, owner, repo, token, logger } = params;
+  if (!token) return [];
+  const settings = getStyleFetchSettings({ owner, repo });
+  if (settings.limit === 0) return [];
+  const { cacheConfig, cacheComment, cached } = await loadStyleCache({
+    token,
+    maxChars: settings.maxChars,
+    logger
+  });
+  const { order, raw } = getStyleSourceOrder();
+  const vectorConfig = getVectorDbConfig();
+  const headers = buildHeaders(token);
+  for (const source of order) {
+    if (!canUseVectorDbSource({ source, vectorConfig, raw, logger })) continue;
+    const cachedExamples = getCachedStyleExamples({
+      cached,
+      cacheConfig,
+      repoFullName: settings.repoFullName,
       login,
-      lookbackDays,
-      limit,
-      maxChars,
-      examples
-    };
-    await upsertStyleCacheComment({
-      owner: cacheConfig.owner,
-      repo: cacheConfig.repo,
-      issueNumber: cacheConfig.issueNumber,
-      commentId: cacheComment?.id,
-      body: buildStyleCacheBody(cacheConfig.markerLabel, payload),
+      limit: settings.limit,
+      lookbackDays: settings.lookbackDays,
+      source
+    });
+    if (cachedExamples) {
+      logger.info("[codexAgent] Style cache hit", {
+        count: cachedExamples.length,
+        issue: cacheConfig ? `${cacheConfig.owner}/${cacheConfig.repo}#${cacheConfig.issueNumber}` : "",
+        source
+      });
+      return cachedExamples;
+    }
+    const examples = await fetchExamplesForSource({
+      source,
+      login,
       token,
+      vectorConfig,
+      from: settings.from,
+      maxDate: settings.maxDate,
+      limit: settings.limit,
+      marker: settings.marker,
+      maxChars: settings.maxChars,
+      repoFilter: settings.repoFilter,
+      headers,
       logger
     });
-    logger.info("[codexAgent] Style cache updated", {
-      count: examples.length,
-      issue: `${cacheConfig.owner}/${cacheConfig.repo}#${cacheConfig.issueNumber}`
+    if (!examples.length) continue;
+    await maybeUpdateStyleCache({
+      cacheConfig,
+      cacheComment,
+      token,
+      payload: {
+        version: STYLE_CACHE_VERSION,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        login,
+        repo: settings.repoFullName || void 0,
+        lookbackDays: settings.lookbackDays,
+        limit: settings.limit,
+        maxChars: settings.maxChars,
+        source,
+        examples
+      },
+      logger
     });
+    return examples;
   }
-  return examples;
+  return [];
 }
 async function maybeFetchStyleExamples(args) {
-  const { login, logger } = args;
+  const { login, owner, repo, logger } = args;
   const isStyleFetchEnabled = parseBool(getEnvString(["PROMPT_FETCH_STYLE", "UOS_STYLE_FETCH"], "1"), true);
   if (!isStyleFetchEnabled) return [];
   if (!login) return [];
   try {
     const token = selectPatToken({ isSelf: true });
     if (!token) return [];
-    return await fetchStyleExamples({ login, token, logger });
+    return await fetchStyleExamples({ login, owner, repo, token, logger });
   } catch (error) {
     logger.info("[codexAgent] Style fetch failed (non-fatal)", { error: String(error) });
     return [];
@@ -2362,7 +2665,7 @@ async function codexAgent(context) {
   const mentionOverride = parseMentionEnv(process.env.PI_MENTION);
   const isMinimalEnv = process.env.PI_MINIMAL === "1";
   const fetchedContext = await maybePrefetchContext({ logger, isSelf, owner, repo, issueNumber, isPr });
-  const styleExamples = isMinimalEnv ? [] : await maybeFetchStyleExamples({ login: agentOwner, logger });
+  const styleExamples = isMinimalEnv ? [] : await maybeFetchStyleExamples({ login: agentOwner, owner, repo, logger });
   const richPrompt = buildRichPrompt({
     accessLevel,
     isPr,
