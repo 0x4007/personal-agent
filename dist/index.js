@@ -1725,6 +1725,28 @@ function truncate(value, maxChars) {
   if (value.length <= maxChars) return value;
   return value.slice(0, maxChars).trimEnd() + "...";
 }
+function looksSensitive(value) {
+  return SENSITIVE_PATTERNS.some((pattern) => pattern.test(value));
+}
+function parseDateMs(value) {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+function isPastLookback(updatedAtMs, minUpdatedAtMs) {
+  if (minUpdatedAtMs === null || updatedAtMs === null) return false;
+  return updatedAtMs < minUpdatedAtMs;
+}
+function shouldSkipStyleBody(body, markers) {
+  if (markers.some((marker) => marker && body.includes(marker))) return true;
+  return looksSensitive(body);
+}
+function normalizeStyleBody(body, maxChars) {
+  const normalized = body.replace(/\s+/g, " ").trim();
+  if (normalized.length < 40) return null;
+  const trimmed = truncate(normalized, maxChars);
+  return trimmed || null;
+}
 function normalizeStyleExamples(raw, maxChars) {
   if (!Array.isArray(raw)) return [];
   const max = Math.max(120, Math.min(800, Math.floor(maxChars)));
@@ -1775,14 +1797,18 @@ function getStyleCacheConfig() {
     shouldWriteCache
   };
 }
-function appendStyleExamples(nodes, examples, limit, marker, maxChars) {
+function appendStyleExamples(nodes, examples, limit, markers, maxChars, minUpdatedAtMs) {
+  let hasReachedLookback = false;
   for (const node of nodes) {
+    const updatedAtMs = parseDateMs(node?.updatedAt) ?? parseDateMs(node?.createdAt);
+    if (isPastLookback(updatedAtMs, minUpdatedAtMs)) {
+      hasReachedLookback = true;
+      continue;
+    }
     const body = (node?.body ?? "").trim();
     if (!body) continue;
-    if (marker && body.includes(marker)) continue;
-    const normalized = body.replace(/\s+/g, " ").trim();
-    if (normalized.length < 40) continue;
-    const trimmed = truncate(normalized, maxChars);
+    if (shouldSkipStyleBody(body, markers)) continue;
+    const trimmed = normalizeStyleBody(body, maxChars);
     if (!trimmed) continue;
     examples.push({
       body: trimmed,
@@ -1792,6 +1818,7 @@ function appendStyleExamples(nodes, examples, limit, marker, maxChars) {
     });
     if (examples.length >= limit) break;
   }
+  return { hasReachedLookback };
 }
 async function fetchStylePage(params) {
   const { headers, variables, logger } = params;
@@ -1806,32 +1833,33 @@ async function fetchStylePage(params) {
     return null;
   }
   const json = await resp.json();
-  const issueComments = json.data?.user?.contributionsCollection?.issueComments;
+  const issueComments = json.data?.user?.issueComments;
   return {
     nodes: issueComments?.nodes ?? [],
     pageInfo: issueComments?.pageInfo ?? {}
   };
 }
 async function collectStyleExamples(params) {
-  const { login, from, to, headers, limit, marker, maxChars, logger } = params;
+  const { login, from, headers, limit, marker, maxChars, logger } = params;
   const examples = [];
   let cursor = null;
   let hasNext = true;
+  const markers = [marker, DEFAULT_REPLY_MARKER].filter(Boolean);
+  const minUpdatedAtMs = Number.isFinite(from.getTime()) ? from.getTime() : null;
   while (hasNext && examples.length < limit) {
     const page = await fetchStylePage({
       headers,
       variables: {
         login,
-        from: from.toISOString(),
-        to: to.toISOString(),
         cursor
       },
       logger
     });
     if (!page) return examples;
-    appendStyleExamples(page.nodes, examples, limit, marker, maxChars);
+    const { hasReachedLookback } = appendStyleExamples(page.nodes, examples, limit, markers, maxChars, minUpdatedAtMs);
     hasNext = Boolean(page.pageInfo.hasNextPage);
     cursor = page.pageInfo.endCursor ?? null;
+    if (hasReachedLookback) break;
   }
   return examples.slice(0, limit);
 }
@@ -1964,7 +1992,6 @@ async function fetchStyleExamples(params) {
   const examples = await collectStyleExamples({
     login,
     from,
-    to: maxDate,
     headers,
     limit,
     marker,
@@ -2011,7 +2038,7 @@ async function maybeFetchStyleExamples(args) {
     return [];
   }
 }
-var STYLE_CACHE_VERSION, DEFAULT_STYLE_CACHE_MARKER, STYLE_QUERY;
+var STYLE_CACHE_VERSION, DEFAULT_STYLE_CACHE_MARKER, DEFAULT_REPLY_MARKER, SENSITIVE_PATTERNS, STYLE_QUERY;
 var init_github = __esm({
   "src/handlers/codex-agent/lib/github.ts"() {
     "use strict";
@@ -2020,13 +2047,13 @@ var init_github = __esm({
     init_utils();
     STYLE_CACHE_VERSION = 1;
     DEFAULT_STYLE_CACHE_MARKER = "pa:style-cache";
-    STYLE_QUERY = `query($login: String!, $from: DateTime!, $to: DateTime!, $cursor: String) {
+    DEFAULT_REPLY_MARKER = "pa:ai";
+    SENSITIVE_PATTERNS = [/-----BEGIN [A-Z ]*PRIVATE KEY-----/i, /private_key/i];
+    STYLE_QUERY = `query($login: String!, $cursor: String) {
   user(login: $login) {
-    contributionsCollection(from: $from, to: $to) {
-      issueComments(first: 50, after: $cursor) {
-        nodes { body createdAt url repository { nameWithOwner } }
-        pageInfo { hasNextPage endCursor }
-      }
+    issueComments(first: 50, after: $cursor, orderBy: { field: UPDATED_AT, direction: DESC }) {
+      nodes { body createdAt updatedAt url repository { nameWithOwner } }
+      pageInfo { hasNextPage endCursor }
     }
   }
 }`;
