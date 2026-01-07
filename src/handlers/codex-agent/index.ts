@@ -43,6 +43,12 @@ export async function codexAgent(context: Context): Promise<void> {
   const issueNumber = payload.issue.number;
   const isPr = Boolean((payload.issue as { pull_request?: unknown } | undefined)?.pull_request);
   const owner = payload.repository.owner.login;
+  const whitelistedOrgs = ["placeholder-org"];
+  const lowerOwner = owner.toLowerCase();
+  if (!whitelistedOrgs.includes(lowerOwner)) {
+    logger.info(`Request from non-whitelisted org: ${owner}`);
+    return;
+  }
   const body = String(payload.comment.body || "");
   const agentOwner = env.AGENT_OWNER;
 

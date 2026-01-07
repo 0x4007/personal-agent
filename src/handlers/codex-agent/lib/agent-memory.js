@@ -1,0 +1,369 @@
+const SUMMARY_MAX_CHARS = 1_200;
+const IN_MEMORY_MAX_ENTRIES = 250;
+const LIST_PAGE_SIZE = 200;
+import { getKvClient } from "./kv-client";
+const inMemory = new Map();
+let kvPromise = null;
+let memoryKeyPromise = null;
+const warned = new Set();
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+function toBufferSource(bytes) {
+    const copy = new Uint8Array(bytes.length);
+    copy.set(bytes);
+    return copy.buffer;
+}
+function warnOnce(logger, key, message, err) {
+    if (!logger || typeof logger.warn !== "function" || warned.has(key))
+        return;
+    warned.add(key);
+    if (err !== undefined) {
+        logger.warn({ err }, message);
+    }
+    else {
+        logger.warn(message);
+    }
+}
+function isRecord(value) {
+    return typeof value === "object" && value !== null;
+}
+function normalizeString(value) {
+    return typeof value === "string" ? value : "";
+}
+function clampText(value, maxChars) {
+    const text = value.trim();
+    if (!text)
+        return "";
+    if (text.length <= maxChars)
+        return text;
+    return `${text.slice(0, maxChars)}...`;
+}
+function getEnvValue(key) {
+    if (typeof process !== "undefined" && process.env) {
+        const value = process.env[key];
+        if (value !== undefined)
+            return value;
+    }
+    const deno = globalThis.Deno;
+    if (deno?.env?.get)
+        return deno.env.get(key);
+    return undefined;
+}
+function normalizeBase64(input) {
+    const trimmed = input.trim();
+    if (!trimmed)
+        return null;
+    const normalized = trimmed.replace(/-/g, "+").replace(/_/g, "/");
+    const padLength = normalized.length % 4;
+    if (padLength === 0)
+        return normalized;
+    return `${normalized}${"=".repeat(4 - padLength)}`;
+}
+function decodeBase64Bytes(input) {
+    const normalized = normalizeBase64(input);
+    if (!normalized)
+        return null;
+    const atobFn = globalThis.atob;
+    if (typeof atobFn !== "function")
+        return null;
+    try {
+        const binary = atobFn(normalized);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes;
+    }
+    catch {
+        return null;
+    }
+}
+function encodeBase64Bytes(bytes) {
+    const btoaFn = globalThis.btoa;
+    if (typeof btoaFn !== "function") {
+        throw new Error("btoa is unavailable");
+    }
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode(...chunk);
+    }
+    return btoaFn(binary);
+}
+async function getMemoryCryptoKey(logger) {
+    if (memoryKeyPromise)
+        return memoryKeyPromise;
+    memoryKeyPromise = (async () => {
+        const raw = getEnvValue("UOS_AGENT_MEMORY_KEY");
+        if (!raw) {
+            warnOnce(logger, "agent-memory-key-missing", "UOS_AGENT_MEMORY_KEY is not set; agent memory persistence is disabled.");
+            return null;
+        }
+        const bytes = decodeBase64Bytes(raw);
+        if (!bytes) {
+            warnOnce(logger, "agent-memory-key-invalid", "UOS_AGENT_MEMORY_KEY must be base64-encoded 32 bytes.");
+            return null;
+        }
+        if (bytes.length !== 32) {
+            warnOnce(logger, "agent-memory-key-length", "UOS_AGENT_MEMORY_KEY must decode to 32 bytes for AES-256-GCM.");
+            return null;
+        }
+        try {
+            return await crypto.subtle.importKey("raw", toBufferSource(bytes), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+        }
+        catch (error) {
+            warnOnce(logger, "agent-memory-key-import", "Failed to import UOS_AGENT_MEMORY_KEY.", error);
+            return null;
+        }
+    })();
+    return memoryKeyPromise;
+}
+async function compressBytes(payload) {
+    const ctor = globalThis.CompressionStream;
+    if (!ctor) {
+        throw new Error("CompressionStream is unavailable");
+    }
+    const stream = new ctor("gzip");
+    const writer = stream.writable.getWriter();
+    await writer.write(toBufferSource(payload));
+    await writer.close();
+    const buffer = await new Response(stream.readable).arrayBuffer();
+    return new Uint8Array(buffer);
+}
+async function decompressBytes(payload) {
+    const ctor = globalThis.DecompressionStream;
+    if (!ctor) {
+        throw new Error("DecompressionStream is unavailable");
+    }
+    const stream = new ctor("gzip");
+    const writer = stream.writable.getWriter();
+    await writer.write(toBufferSource(payload));
+    await writer.close();
+    const buffer = await new Response(stream.readable).arrayBuffer();
+    return new Uint8Array(buffer);
+}
+function isMemoryEnvelope(value) {
+    if (!isRecord(value))
+        return false;
+    return value.v === 1 && value.alg === "A256GCM" && value.codec === "json+gzip" && typeof value.iv === "string" && typeof value.data === "string";
+}
+async function encodeEntry(entry, logger) {
+    const key = await getMemoryCryptoKey(logger);
+    if (!key)
+        return null;
+    const compressed = await compressBytes(textEncoder.encode(JSON.stringify(entry)));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ivSource = toBufferSource(iv);
+    const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: ivSource }, key, toBufferSource(compressed));
+    return {
+        v: 1,
+        alg: "A256GCM",
+        iv: encodeBase64Bytes(iv),
+        data: encodeBase64Bytes(new Uint8Array(ciphertext)),
+        codec: "json+gzip",
+    };
+}
+async function decodeEntry(value, logger) {
+    if (isMemoryEnvelope(value)) {
+        const key = await getMemoryCryptoKey(logger);
+        if (!key)
+            return null;
+        const iv = decodeBase64Bytes(value.iv);
+        const data = decodeBase64Bytes(value.data);
+        if (!iv || !data) {
+            warnOnce(logger, "agent-memory-envelope-base64", "Failed to decode agent memory payload.");
+            return null;
+        }
+        try {
+            const ivSource = toBufferSource(iv);
+            const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: ivSource }, key, toBufferSource(data));
+            const decompressed = await decompressBytes(new Uint8Array(plaintext));
+            const parsed = JSON.parse(textDecoder.decode(decompressed));
+            return parseEntryRecord(parsed);
+        }
+        catch (error) {
+            warnOnce(logger, "agent-memory-envelope-decrypt", "Failed to decrypt agent memory entry.", error);
+            return null;
+        }
+    }
+    return parseEntryRecord(value);
+}
+function normalizeScopeKey(scopeKey) {
+    return typeof scopeKey === "string" ? scopeKey.trim() : "";
+}
+function buildKvKey(owner, repo, scopeKey) {
+    const scope = normalizeScopeKey(scopeKey);
+    if (scope)
+        return ["ubiquityos", "agent", "memory", "scope", scope, "events"];
+    return ["ubiquityos", "agent", "memory", owner, repo, "events"];
+}
+function buildMapKey(owner, repo, scopeKey) {
+    const scope = normalizeScopeKey(scopeKey);
+    if (scope)
+        return `scope:${scope}`;
+    return `${owner}/${repo}`;
+}
+function buildEventKey(owner, repo, updatedAt, stateId, scopeKey) {
+    return [...buildKvKey(owner, repo, scopeKey), updatedAt, stateId];
+}
+async function getKv(logger) {
+    if (kvPromise)
+        return kvPromise;
+    kvPromise = (async () => {
+        const kv = await getKvClient(logger);
+        if (!kv)
+            return null;
+        const key = await getMemoryCryptoKey(logger);
+        if (!key)
+            return null;
+        return kv;
+    })();
+    return kvPromise;
+}
+function parseEntryRecord(value) {
+    if (!isRecord(value) || value.kind !== "agent_run")
+        return null;
+    const stateId = normalizeString(value.stateId).trim();
+    const status = normalizeString(value.status).trim();
+    const updatedAt = normalizeString(value.updatedAt).trim();
+    const issueNumber = typeof value.issueNumber === "number" && Number.isFinite(value.issueNumber) ? Math.trunc(value.issueNumber) : null;
+    if (!stateId || !status || !updatedAt || issueNumber === null)
+        return null;
+    return {
+        kind: "agent_run",
+        stateId,
+        status,
+        issueNumber,
+        updatedAt,
+        runUrl: normalizeString(value.runUrl).trim() || undefined,
+        prUrl: normalizeString(value.prUrl).trim() || undefined,
+        summary: clampText(normalizeString(value.summary), SUMMARY_MAX_CHARS) || undefined,
+    };
+}
+function sanitizeEntry(value) {
+    return parseEntryRecord(value);
+}
+async function readEntriesFromKv(kv, owner, repo, limit, logger, scopeKey) {
+    const scanLimit = Math.max(limit * 12, limit);
+    const prefix = buildKvKey(owner, repo, scopeKey);
+    const entries = [];
+    if (kv.supportsReverse !== false) {
+        try {
+            for await (const item of kv.list({ prefix }, { reverse: true, limit: scanLimit })) {
+                const parsed = await decodeEntry(item.value, logger);
+                if (parsed)
+                    entries.push(parsed);
+            }
+            return entries;
+        }
+        catch (error) {
+            warnOnce(logger, "agent-memory-list", "Failed to list agent memory entries.", error);
+            return [];
+        }
+    }
+    const buffer = [];
+    let cursor;
+    try {
+        do {
+            const iterator = kv.list({ prefix }, { limit: LIST_PAGE_SIZE, cursor });
+            for await (const item of iterator) {
+                const parsed = await decodeEntry(item.value, logger);
+                if (!parsed)
+                    continue;
+                buffer.push(parsed);
+                if (buffer.length > scanLimit)
+                    buffer.shift();
+            }
+            cursor = iterator.cursor ? String(iterator.cursor) : "";
+        } while (cursor);
+    }
+    catch (error) {
+        warnOnce(logger, "agent-memory-list", "Failed to list agent memory entries.", error);
+        return [];
+    }
+    buffer.reverse();
+    return buffer;
+}
+async function upsertAgentRunMemoryScope(params) {
+    const owner = params.owner.trim();
+    const repo = params.repo.trim();
+    const entry = sanitizeEntry(params.entry);
+    if (!owner || !repo)
+        return;
+    if (!entry)
+        return;
+    const kv = await getKv(params.logger);
+    if (kv) {
+        try {
+            const encoded = await encodeEntry(entry, params.logger);
+            if (encoded) {
+                await kv.set(buildEventKey(owner, repo, entry.updatedAt, entry.stateId, params.scopeKey), encoded);
+                return;
+            }
+        }
+        catch (error) {
+            warnOnce(params.logger, "agent-memory-write", "Failed to persist agent memory entry.", error);
+        }
+    }
+    const key = buildMapKey(owner, repo, params.scopeKey);
+    const entries = inMemory.get(key) ?? [];
+    entries.push(entry);
+    while (entries.length > IN_MEMORY_MAX_ENTRIES)
+        entries.shift();
+    inMemory.set(key, entries);
+}
+export async function upsertAgentRunMemory(params) {
+    await upsertAgentRunMemoryScope(params);
+    const scope = normalizeScopeKey(params.scopeKey);
+    if (scope) {
+        await upsertAgentRunMemoryScope({ ...params, scopeKey: undefined });
+    }
+}
+export async function getAgentMemorySnippet(params) {
+    const owner = params.owner.trim();
+    const repo = params.repo.trim();
+    const limit = typeof params.limit === "number" && Number.isFinite(params.limit) ? Math.max(0, Math.trunc(params.limit)) : 6;
+    const maxChars = typeof params.maxChars === "number" && Number.isFinite(params.maxChars) ? Math.max(200, Math.trunc(params.maxChars)) : 2_000;
+    if (!owner || !repo || limit === 0)
+        return "";
+    const kv = await getKv(params.logger);
+    const entries = [];
+    const scope = normalizeScopeKey(params.scopeKey);
+    if (kv) {
+        entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger, scope || undefined)));
+    }
+    const key = buildMapKey(owner, repo, scope || undefined);
+    const localEntries = inMemory.get(key) ?? [];
+    if (localEntries.length > 0) {
+        entries.push(...localEntries.slice(-IN_MEMORY_MAX_ENTRIES).reverse());
+    }
+    if (entries.length === 0 && scope) {
+        if (kv) {
+            entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger)));
+        }
+        const repoKey = buildMapKey(owner, repo);
+        const repoEntries = inMemory.get(repoKey) ?? [];
+        if (repoEntries.length > 0) {
+            entries.push(...repoEntries.slice(-IN_MEMORY_MAX_ENTRIES).reverse());
+        }
+    }
+    if (entries.length === 0)
+        return "";
+    const seen = new Set();
+    const lines = [];
+    for (const e of entries) {
+        if (seen.has(e.stateId))
+            continue;
+        seen.add(e.stateId);
+        const summaryFirstLine = (e.summary ?? "").split(/\r?\n/)[0]?.trim();
+        const headline = summaryFirstLine ? clampText(summaryFirstLine, 180) : "";
+        const parts = [`[${e.updatedAt}]`, `#${e.issueNumber}`, e.status];
+        if (headline)
+            parts.push(`- ${headline}`);
+        lines.push(`- ${parts.join(" ")}`);
+        if (lines.length >= limit)
+            break;
+    }
+    return clampText(lines.join("\n"), maxChars);
+}
