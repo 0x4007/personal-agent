@@ -17,7 +17,7 @@ export default tsEslint.config([
       parserOptions: {
         projectService: {
           defaultProject: "tsconfig.json",
-          allowDefaultProject: ["*.mjs"],
+          allowDefaultProject: ["eslint.config.mjs", "scripts/agent-bus.mjs"],
         },
         tsconfigRootDir: import.meta.dirname,
       },

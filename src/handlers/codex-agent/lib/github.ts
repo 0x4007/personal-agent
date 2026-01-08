@@ -204,10 +204,9 @@ function normalizeRepoKey(value: string | undefined): string {
 function isSameRepo(params: { owner: string; repo: string; candidateFull?: string; candidateOwner?: string; candidateName?: string }): boolean {
   const { owner, repo, candidateFull, candidateOwner, candidateName } = params;
   const target = normalizeRepoKey(`${owner}/${repo}`);
-  return (
-    (candidateFull && normalizeRepoKey(candidateFull) === target) ||
-    (candidateOwner && candidateName && normalizeRepoKey(`${candidateOwner}/${candidateName}`) === target)
-  );
+  const isFullMatch = Boolean(candidateFull && normalizeRepoKey(candidateFull) === target);
+  const isOwnerNameMatch = Boolean(candidateOwner && candidateName && normalizeRepoKey(`${candidateOwner}/${candidateName}`) === target);
+  return isFullMatch || isOwnerNameMatch;
 }
 
 function getStyleSourceOrder(): { order: StyleSource[]; raw: string } {

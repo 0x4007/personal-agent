@@ -1,4 +1,3 @@
-/* eslint-disable sonarjs/cognitive-complexity */
 import type { LoggerLike } from "./kv-client";
 
 type VectorDbConfig = Readonly<{
@@ -97,30 +96,38 @@ function parseVectorDocument(value: unknown): VectorDocument | null {
   const record = value as Record<string, unknown>;
   const id = typeof record.id === "string" ? record.id : "";
   const docType = typeof record.doc_type === "string" ? record.doc_type : "";
-  const markdown = typeof record.markdown === "string" ? record.markdown : null;
-  let embedding: number[] | null = null;
-  if (Array.isArray(record.embedding)) {
-    embedding = (record.embedding as number[]).filter((n) => typeof n === "number");
-  } else if (typeof record.embedding === "string") {
+  if (!id || !docType) return null;
+
+  return {
+    id,
+    docType,
+    markdown: typeof record.markdown === "string" ? record.markdown : null,
+    embedding: parseEmbedding(record.embedding),
+    authorId: parseAuthorId(record.author_id),
+    payload: record.payload ?? null,
+  };
+}
+
+function parseEmbedding(value: unknown): number[] | null {
+  if (Array.isArray(value)) return (value as number[]).filter((n) => typeof n === "number");
+  if (typeof value === "string") {
     try {
-      const parsed = JSON.parse(record.embedding);
-      if (Array.isArray(parsed)) {
-        embedding = parsed.filter((n) => typeof n === "number");
-      }
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.filter((n) => typeof n === "number");
     } catch {
-      embedding = null;
+      return null;
     }
   }
-  let authorId: number | null = null;
-  if (typeof record.author_id === "number" && Number.isFinite(record.author_id)) {
-    authorId = Math.trunc(record.author_id);
-  } else if (typeof record.author_id === "string") {
-    const parsed = Number(record.author_id);
-    if (Number.isFinite(parsed)) authorId = Math.trunc(parsed);
+  return null;
+}
+
+function parseAuthorId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.trunc(parsed);
   }
-  const payload = record.payload ?? null;
-  if (!id || !docType) return null;
-  return { id, docType, markdown, embedding, authorId, payload };
+  return null;
 }
 
 export async function fetchVectorDocument(config: VectorDbConfig, nodeId: string): Promise<VectorDocument | null> {

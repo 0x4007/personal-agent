@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 
-const usage = () =>
-  `
+/* global process, fetch */
+function usage() {
+  return `
 Usage:
   node scripts/agent-bus.mjs post --agent <id> --body <text> [--channel <name>] [--kind <name>] [--metadata <json>] [--body-file <path>] [--base-url <url>]
   node scripts/agent-bus.mjs poll [--since <ms>] [--cursor <cursor>] [--since-file <path>] [--limit <n>] [--agent <id>] [--channel <name>] [--base-url <url>] [--out <path>]
@@ -15,47 +16,54 @@ Auth env:
   UOS_GH_INSTALLATION_ID
   UOS_AGENT_BUS_URL (default base url)
 `.trim();
+}
 
-const parseArgs = (argv) => {
+function parseArgs(argv) {
   const options = {};
-  for (let i = 0; i < argv.length; i++) {
+  for (let i = 0; i < argv.length; ) {
     const arg = argv[i];
-    if (!arg.startsWith("--")) continue;
+    if (!arg.startsWith("--")) {
+      i += 1;
+      continue;
+    }
     const key = arg.slice(2);
     const next = argv[i + 1];
     if (next && !next.startsWith("--")) {
       options[key] = next;
-      i += 1;
+      i += 2;
     } else {
       options[key] = true;
+      i += 1;
     }
   }
   return options;
-};
+}
 
-const readJsonFile = (path) => {
+function readJsonFile(path) {
   try {
     const raw = fs.readFileSync(path, "utf8");
     return JSON.parse(raw);
   } catch {
     return null;
   }
-};
+}
 
-const writeJsonFile = (path, value) => {
+function writeJsonFile(path, value) {
   fs.writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-};
+}
 
-const parseIntSafe = (value) => {
+function parseIntSafe(value) {
   if (!value) return null;
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return null;
   return Math.trunc(parsed);
-};
+}
 
-const envOr = (key, fallback = "") => String(process.env[key] || fallback).trim();
+function envOr(key, fallback = "") {
+  return String(process.env[key] || fallback).trim();
+}
 
-const buildHeaders = () => {
+function buildHeaders() {
   const token = envOr("UOS_AGENT_AUTH_TOKEN", envOr("GH_TOKEN"));
   const kernelToken = envOr("UOS_KERNEL_TOKEN");
   const owner = envOr("UOS_GH_OWNER");
@@ -82,10 +90,15 @@ const buildHeaders = () => {
   return headers;
 };
 
-const baseUrl = (override) =>
-  String(override || envOr("UOS_AGENT_BUS_URL", "https://ai-ubq-fi.deno.dev/v1/agent-bus")).trim();
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
 
-const handlePost = async (options) => {
+function baseUrl(override) {
+  return String(override || envOr("UOS_AGENT_BUS_URL", "https://ai-ubq-fi.deno.dev/v1/agent-bus")).trim();
+}
+
+async function handlePost(options) {
   const agentId = String(options.agent || options["agent-id"] || "").trim();
   if (!agentId) throw new Error("Missing --agent");
 
@@ -120,9 +133,9 @@ const handlePost = async (options) => {
     throw new Error(`POST failed (${res.status}): ${text}`);
   }
   process.stdout.write(`${text.trim()}\n`);
-};
+}
 
-const handlePoll = async (options) => {
+async function handlePoll(options) {
   const stateFile = options["since-file"] ? String(options["since-file"]).trim() : "";
   const state = stateFile ? readJsonFile(stateFile) : null;
 
@@ -148,17 +161,7 @@ const handlePoll = async (options) => {
   }
 
   if (stateFile) {
-    try {
-      const data = JSON.parse(text);
-      const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
-      const nextState = {
-        since: hasOwn(data, "next_since") ? data.next_since : state?.since ?? null,
-        cursor: hasOwn(data, "next_cursor") ? data.next_cursor : state?.cursor ?? null,
-      };
-      writeJsonFile(stateFile, nextState);
-    } catch {
-      // ignore state updates when response isn't json
-    }
+    updateStateFromFile(stateFile, text, state);
   }
 
   const outPath = options.out ? String(options.out).trim() : "";
@@ -168,9 +171,22 @@ const handlePoll = async (options) => {
   }
 
   process.stdout.write(`${text.trim()}\n`);
-};
+}
 
-const main = async () => {
+function updateStateFromFile(stateFile, text, state) {
+  try {
+    const data = JSON.parse(text);
+    const nextState = {
+      since: hasOwn(data, "next_since") ? data.next_since : state?.since ?? null,
+      cursor: hasOwn(data, "next_cursor") ? data.next_cursor : state?.cursor ?? null,
+    };
+    writeJsonFile(stateFile, nextState);
+  } catch {
+    // ignore state updates when response isn't json
+  }
+}
+
+async function main() {
   const args = process.argv.slice(2);
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
     process.stdout.write(`${usage()}\n`);

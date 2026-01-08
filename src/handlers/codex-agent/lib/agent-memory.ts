@@ -1,4 +1,3 @@
-/* eslint-disable sonarjs/cognitive-complexity, sonarjs/no-empty-collection, sonarjs/no-gratuitous-expressions */
 type AgentRunMemoryEntry = Readonly<{
   kind: "agent_run";
   stateId: string;
@@ -19,13 +18,11 @@ type AgentMemoryEnvelope = Readonly<{
 }>;
 
 const SUMMARY_MAX_CHARS = 1_200;
-const IN_MEMORY_MAX_ENTRIES = 250;
 const LIST_PAGE_SIZE = 200;
 
 import type { KvKey, KvLike, LoggerLike } from "./kv-client";
 import { getKvClient } from "./kv-client";
 
-const inMemory = new Map<string, AgentRunMemoryEntry[]>();
 let kvPromise: Promise<KvLike | null> | null = null;
 let memoryKeyPromise: Promise<CryptoKey | null> | null = null;
 const warned = new Set<string>();
@@ -178,12 +175,6 @@ function buildKvKey(owner: string, repo: string, scopeKey?: string): KvKey {
   return ["ubiquityos", "agent", "memory", owner, repo, "events"];
 }
 
-function buildMapKey(owner: string, repo: string, scopeKey?: string): string {
-  const scope = normalizeScopeKey(scopeKey);
-  if (scope) return `scope:${scope}`;
-  return `${owner}/${repo}`;
-}
-
 async function getKv(logger?: LoggerLike): Promise<KvLike | null> {
   if (kvPromise) return kvPromise;
   kvPromise = (async () => {
@@ -225,21 +216,28 @@ async function readEntriesFromKv(
 ): Promise<AgentRunMemoryEntry[]> {
   const scanLimit = Math.max(limit * 12, limit);
   const prefix = buildKvKey(owner, repo, scopeKey);
-  const entries: AgentRunMemoryEntry[] = [];
 
   if (kv.supportsReverse !== false) {
-    try {
-      for await (const item of kv.list({ prefix }, { reverse: true, limit: scanLimit })) {
-        const parsed = await decodeEntry(item.value, logger);
-        if (parsed) entries.push(parsed);
-      }
-      return entries;
-    } catch (error) {
-      warnOnce(logger, "agent-memory-list", "Failed to list agent memory entries.", error);
-      return [];
-    }
+    return await readEntriesReverse(kv, prefix, scanLimit, logger);
   }
+  return await readEntriesForward(kv, prefix, scanLimit, logger);
+}
 
+async function readEntriesReverse(kv: KvLike, prefix: KvKey, scanLimit: number, logger?: LoggerLike): Promise<AgentRunMemoryEntry[]> {
+  try {
+    const entries: AgentRunMemoryEntry[] = [];
+    for await (const item of kv.list({ prefix }, { reverse: true, limit: scanLimit })) {
+      const parsed = await decodeEntry(item.value, logger);
+      if (parsed) entries.push(parsed);
+    }
+    return entries;
+  } catch (error) {
+    warnOnce(logger, "agent-memory-list", "Failed to list agent memory entries.", error);
+    return [];
+  }
+}
+
+async function readEntriesForward(kv: KvLike, prefix: KvKey, scanLimit: number, logger?: LoggerLike): Promise<AgentRunMemoryEntry[]> {
   const buffer: AgentRunMemoryEntry[] = [];
   let cursor: string | undefined;
   try {
@@ -247,9 +245,10 @@ async function readEntriesFromKv(
       const iterator = kv.list({ prefix }, { limit: LIST_PAGE_SIZE, cursor });
       for await (const item of iterator) {
         const parsed = await decodeEntry(item.value, logger);
-        if (!parsed) continue;
-        buffer.push(parsed);
-        if (buffer.length > scanLimit) buffer.shift();
+        if (parsed) {
+          buffer.push(parsed);
+          if (buffer.length > scanLimit) buffer.shift();
+        }
       }
       cursor = iterator.cursor ? String(iterator.cursor) : "";
     } while (cursor);
@@ -257,27 +256,32 @@ async function readEntriesFromKv(
     warnOnce(logger, "agent-memory-list", "Failed to list agent memory entries.", error);
     return [];
   }
-
-  buffer.reverse();
-  return buffer;
+  return buffer.reverse();
 }
 
-export async function getAgentMemorySnippet(
-  params: Readonly<{
-    owner: string;
-    repo: string;
-    limit?: number;
-    maxChars?: number;
-    logger?: LoggerLike;
-    scopeKey?: string;
-  }>
-): Promise<string> {
+type MemoryParams = Readonly<{
+  owner: string;
+  repo: string;
+  limit?: number;
+  maxChars?: number;
+  logger?: LoggerLike;
+  scopeKey?: string;
+}>;
+
+export async function getAgentMemorySnippet(params: MemoryParams): Promise<string> {
   const owner = params.owner.trim();
   const repo = params.repo.trim();
   const limit = typeof params.limit === "number" && Number.isFinite(params.limit) ? Math.max(0, Math.trunc(params.limit)) : 6;
-  const maxChars = typeof params.maxChars === "number" && Number.isFinite(params.maxChars) ? Math.max(200, Math.trunc(params.maxChars)) : 2_000;
   if (!owner || !repo || limit === 0) return "";
 
+  const entries = await gatherMemoryEntries(params, limit, owner, repo);
+  if (entries.length === 0) return "";
+
+  const maxChars = typeof params.maxChars === "number" && Number.isFinite(params.maxChars) ? Math.max(200, Math.trunc(params.maxChars)) : 2_000;
+  return clampText(renderMemoryLines(entries, limit).join("\n"), maxChars);
+}
+
+async function gatherMemoryEntries(params: MemoryParams, limit: number, owner: string, repo: string) {
   const kv = await getKv(params.logger);
   const entries: AgentRunMemoryEntry[] = [];
   const scope = normalizeScopeKey(params.scopeKey);
@@ -286,37 +290,28 @@ export async function getAgentMemorySnippet(
     entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger, scope || undefined)));
   }
 
-  const key = buildMapKey(owner, repo, scope || undefined);
-  const localEntries = inMemory.get(key);
-  if (localEntries && localEntries.length > 0) {
-    entries.push(...localEntries.slice(-IN_MEMORY_MAX_ENTRIES).reverse());
+  if (entries.length === 0 && scope && kv) {
+    entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger)));
   }
+  return entries;
+}
 
-  if (entries.length === 0 && scope) {
-    if (kv) {
-      entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger, scope || undefined)));
-    }
-    const repoKey = buildMapKey(owner, repo);
-    const localRepoEntries = inMemory.get(repoKey);
-    if (localRepoEntries && localRepoEntries.length > 0) {
-      entries.push(...localRepoEntries.slice(-IN_MEMORY_MAX_ENTRIES).reverse());
-    }
-  }
-
-  if (entries.length === 0) return "";
-
+function renderMemoryLines(entries: AgentRunMemoryEntry[], limit: number): string[] {
   const seen = new Set<string>();
   const lines: string[] = [];
   for (const e of entries) {
     if (seen.has(e.stateId)) continue;
     seen.add(e.stateId);
-    const summaryFirstLine = (e.summary ?? "").split(/\r?\n/)[0]?.trim();
-    const headline = summaryFirstLine ? clampText(summaryFirstLine, 180) : "";
-    const parts = [`[${e.updatedAt}]`, `#${e.issueNumber}`, e.status];
-    if (headline) parts.push(`- ${headline}`);
-    lines.push(`- ${parts.join(" ")}`);
+    lines.push(formatMemoryEntry(e));
     if (lines.length >= limit) break;
   }
+  return lines;
+}
 
-  return clampText(lines.join("\n"), maxChars);
+function formatMemoryEntry(e: AgentRunMemoryEntry): string {
+  const summaryFirstLine = (e.summary ?? "").split(/\r?\n/)[0]?.trim();
+  const headline = summaryFirstLine ? clampText(summaryFirstLine, 180) : "";
+  const parts = [`[${e.updatedAt}]`, `#${e.issueNumber}`, e.status];
+  if (headline) parts.push(`- ${headline}`);
+  return `- ${parts.join(" ")}`;
 }

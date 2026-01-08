@@ -34,51 +34,32 @@ function formatDispatchError(error: unknown): { message: string; status?: number
  * - AGENT_OWNER: GitHub username to match @mention
  * - UOS_AGENT_OWNER/UOS_AGENT_REPO/UOS_AGENT_WORKFLOW: target agent workflow to dispatch
  */
-// eslint-disable-next-line sonarjs/cognitive-complexity
 export async function codexAgent(context: Context): Promise<void> {
   const { logger, payload, env } = context;
-
-  const sender = payload.comment.user?.login;
-  const repo = payload.repository.name;
-  const issueNumber = payload.issue.number;
-  const isPr = Boolean((payload.issue as { pull_request?: unknown } | undefined)?.pull_request);
   const owner = payload.repository.owner.login;
-  const whitelistedOrgs = ["placeholder-org"];
-  const lowerOwner = owner.toLowerCase();
-  if (!whitelistedOrgs.includes(lowerOwner)) {
+  if (!isWhitelisted(owner)) {
     logger.info(`Request from non-whitelisted org: ${owner}`);
     return;
   }
-  const body = String(payload.comment.body || "");
-  const agentOwner = env.AGENT_OWNER;
 
+  const agentOwner = env.AGENT_OWNER;
   if (!agentOwner) {
     logger.error("Missing AGENT_OWNER env");
     return;
   }
 
-  const isSelf = Boolean(sender && agentOwner && String(sender).toLowerCase() === String(agentOwner).toLowerCase());
-  const accessLevel = isSelf ? "full" : "disabled";
-
+  const sender = payload.comment.user?.login;
+  const accessLevel = sender && String(sender).toLowerCase() === String(agentOwner).toLowerCase() ? "full" : "disabled";
   if (accessLevel === "disabled") {
-    logger.info("Skipping execution: agent is in disabled mode for non-owners.", { sender, repo, issueNumber, owner, agentOwner, accessLevel });
+    logger.info("Skipping execution: agent is in disabled mode for non-owners.", { sender, agentOwner });
     return;
   }
 
-  logger.info("Executing codexAgent", { sender, repo, issueNumber, owner, agentOwner, accessLevel });
-
-  const trimmed = body.trim();
-  const mention = `@${agentOwner}`;
-  if (!trimmed.toLowerCase().startsWith(mention.toLowerCase())) {
-    logger.info(`Comment does not start with @${agentOwner}`, { body });
+  const command = getAgentCommand(payload.comment.body || "", agentOwner);
+  if (command === null) {
+    logger.info(`Comment does not start with @${agentOwner}`);
     return;
   }
-
-  const command = trimmed
-    .slice(mention.length)
-    .replace(/^[:,]?\s+/, "")
-    .trim();
-
   if (!command) {
     const errorBody = "No command provided after username mention";
     logger.error(errorBody);
@@ -86,11 +67,40 @@ export async function codexAgent(context: Context): Promise<void> {
     return;
   }
 
-  const isMinimalEnv = env.PROMPT_MINIMAL === "1" || env.UOS_PROMPT_MINIMAL === "1" || env.PI_MINIMAL === "1";
+  const task = await buildAgentTask(context, command, accessLevel, agentOwner);
+  const { conversationContext, conversationKey, agentMemory } = await gatherAgentContext(context, command);
 
-  // Build a universal GitHub reply prompt (single comment output, clean GFM formatting)
-  const styleExamples = isMinimalEnv ? [] : await maybeFetchStyleExamples({ login: agentOwner, owner, repo, logger });
-  const richPrompt = buildRichPrompt({
+  await executeAgentWorkflow(context, task, { conversationContext, conversationKey, agentMemory });
+}
+
+function isWhitelisted(owner: string): boolean {
+  const whitelistedOrgs = ["placeholder-org"];
+  return whitelistedOrgs.includes(owner.toLowerCase());
+}
+
+function getAgentCommand(body: string, agentOwner: string): string | null {
+  const trimmed = body.trim();
+  const mention = `@${agentOwner}`;
+  if (!trimmed.toLowerCase().startsWith(mention.toLowerCase())) return null;
+  return trimmed
+    .slice(mention.length)
+    .replace(/^[:,]?\s+/, "")
+    .trim();
+}
+
+async function buildAgentTask(context: Context, command: string, accessLevel: string, agentOwner: string): Promise<string> {
+  const { payload, env, logger } = context;
+  const repo = payload.repository.name;
+  const issueNumber = payload.issue.number;
+  const owner = payload.repository.owner.login;
+  const isPr = Boolean((payload.issue as { pull_request?: unknown } | undefined)?.pull_request);
+  const sender = payload.comment.user?.login;
+
+  const isMinimalEnv = env.PROMPT_MINIMAL === "1" || env.UOS_PROMPT_MINIMAL === "1" || env.PI_MINIMAL === "1";
+  if (isMinimalEnv) return command;
+
+  const styleExamples = await maybeFetchStyleExamples({ login: agentOwner, owner, repo, logger });
+  const task = buildRichPrompt({
     accessLevel,
     isPr,
     owner,
@@ -101,21 +111,24 @@ export async function codexAgent(context: Context): Promise<void> {
     command,
     styleExamples,
   });
-  const isMinimal = isMinimalEnv;
-  let task = isMinimal ? command : richPrompt;
 
-  // Prompt-size guard: if task exceeds PROMPT_MAX_LEN, fall back to minimal
   const promptMaxLenRaw = Number(env.PROMPT_MAX_LEN || 0);
   const promptMaxLen = Number.isFinite(promptMaxLenRaw) && promptMaxLenRaw > 0 ? Math.floor(promptMaxLenRaw) : 0;
-  if (!isMinimal && promptMaxLen > 0 && task.length > promptMaxLen) {
+  if (promptMaxLen > 0 && task.length > promptMaxLen) {
     logger.info("[codexAgent] Task exceeds PROMPT_MAX_LEN, falling back to minimal", { len: task.length, max: promptMaxLen });
-    // minimal prompt is just the user command
-    task = command;
+    return command;
   }
+  return task;
+}
 
+async function gatherAgentContext(context: Context, command: string) {
+  const { logger, payload } = context;
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
   let conversationContext = "";
   let conversationKey = "";
   let agentMemory = "";
+
   try {
     const conversation = await resolveConversationKeyForContext(
       context,
@@ -139,9 +152,13 @@ export async function codexAgent(context: Context): Promise<void> {
       logger: logger as unknown as { info: (log: string, metadata?: Record<string, unknown>) => unknown },
     });
   } catch (error) {
-    logger.info("[codexAgent] Conversation context build failed (non-fatal)", { error: String(error) });
+    logger.info("[codexAgent] Conversation context build failed (non-fatal)", { error: error instanceof Error ? error : new Error(String(error)) });
   }
+  return { conversationContext, conversationKey, agentMemory };
+}
 
+async function executeAgentWorkflow(context: Context, task: string, overrides: { conversationContext: string; conversationKey: string; agentMemory: string }) {
+  const { env, logger, payload } = context;
   try {
     const shouldDispatch = String(env.UOS_AGENT_DISPATCH ?? "1").trim() !== "0";
     if (!shouldDispatch) {
@@ -154,9 +171,9 @@ export async function codexAgent(context: Context): Promise<void> {
       task,
       logger: logger as unknown as { info: (log: string, metadata?: Record<string, unknown>) => unknown },
       settingsOverrides: {
-        ...(agentMemory ? { agentMemory } : {}),
-        ...(conversationContext ? { conversationContext } : {}),
-        ...(conversationKey ? { conversationKey } : {}),
+        ...(overrides.agentMemory ? { agentMemory: overrides.agentMemory } : {}),
+        ...(overrides.conversationContext ? { conversationContext: overrides.conversationContext } : {}),
+        ...(overrides.conversationKey ? { conversationKey: overrides.conversationKey } : {}),
       },
     });
     logPayloadIfEnabled({ logger: logger as unknown as { info: (log: string, metadata?: Record<string, unknown>) => unknown }, payload, task, inputs });

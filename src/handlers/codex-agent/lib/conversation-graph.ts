@@ -1,4 +1,3 @@
-/* eslint-disable sonarjs/cognitive-complexity, func-style */
 import { getKvClient, type KvKey, type KvLike, type LoggerLike } from "./kv-client";
 
 type ConversationNodeType = "Issue" | "PullRequest";
@@ -46,6 +45,7 @@ type OctokitLike = Readonly<{
         repo: string;
         issue_number: number;
         per_page?: number;
+        page?: number;
         sort?: string;
         direction?: string;
         headers?: Record<string, string>;
@@ -53,6 +53,24 @@ type OctokitLike = Readonly<{
     };
     pulls: {
       get: (params: { owner: string; repo: string; pull_number: number }) => Promise<{ data: Record<string, unknown> }>;
+      listReviewComments: (params: {
+        owner: string;
+        repo: string;
+        pull_number: number;
+        per_page?: number;
+        page?: number;
+        sort?: string;
+        direction?: string;
+        headers?: Record<string, string>;
+      }) => Promise<{ data: Array<Record<string, unknown>> }>;
+      listReviews: (params: {
+        owner: string;
+        repo: string;
+        pull_number: number;
+        per_page?: number;
+        page?: number;
+        headers?: Record<string, string>;
+      }) => Promise<{ data: Array<Record<string, unknown>> }>;
     };
   };
   graphql?: GraphqlRequest;
@@ -175,19 +193,7 @@ function parseConversationNode(value: unknown): ConversationNode | null {
   const id = normalizeString(value.id);
   const createdAt = normalizeString(value.createdAt);
   const url = normalizeString(value.url);
-  let owner = "";
-  let repo = "";
-  if (isRecord(value.repository)) {
-    const repoName = normalizeString(value.repository.name);
-    const ownerLogin = isRecord(value.repository.owner) ? normalizeString(value.repository.owner.login) : "";
-    owner = ownerLogin;
-    repo = repoName;
-  }
-  if ((!owner || !repo) && url) {
-    const parsed = parseOwnerRepoFromUrl(url);
-    owner = owner || parsed.owner;
-    repo = repo || parsed.repo;
-  }
+  const { owner, repo } = extractOwnerRepo(value, url);
   if (!id || !createdAt || !url || !owner || !repo) return null;
   const number = normalizeNumber(value.number);
   const title = normalizeString(value.title) || undefined;
@@ -201,6 +207,22 @@ function parseConversationNode(value: unknown): ConversationNode | null {
     number,
     title,
   };
+}
+
+function extractOwnerRepo(value: Record<string, unknown>, url: string): { owner: string; repo: string } {
+  const result = { owner: "", repo: "" };
+  if (isRecord(value.repository)) {
+    const repoName = normalizeString(value.repository.name);
+    const ownerLogin = isRecord(value.repository.owner) ? normalizeString(value.repository.owner.login) : "";
+    result.owner = ownerLogin;
+    result.repo = repoName;
+  }
+  if ((!result.owner || !result.repo) && url) {
+    const parsed = parseOwnerRepoFromUrl(url);
+    result.owner = result.owner || parsed.owner;
+    result.repo = result.repo || parsed.repo;
+  }
+  return result;
 }
 
 function parseOwnerRepoFromUrl(url: string): { owner: string; repo: string } {
@@ -309,7 +331,7 @@ function getGraphqlClient(context: AgentContext): GraphqlRequest | null {
   if (typeof request !== "function") {
     return null;
   }
-  return async (query: string, variables?: Record<string, unknown>) => {
+  return async function (query: string, variables?: Record<string, unknown>) {
     const response = await request("POST /graphql", { query, variables });
     return (response as { data?: unknown }).data ?? response;
   };
@@ -353,9 +375,6 @@ async function fetchReferenceNode(context: AgentContext, reference: OutboundRefe
     if (reference.kind === "PullRequest") {
       return await fetchPullRequestNode(context, owner, repo, number);
     }
-    if (reference.kind === "Issue") {
-      return await fetchIssueNode(context, owner, repo, number);
-    }
     return await fetchIssueNode(context, owner, repo, number);
   } catch (error) {
     context.logger.debug?.("Failed to resolve outbound reference (non-fatal)", { err: error, owner, repo, number });
@@ -369,8 +388,26 @@ async function fetchOutboundReferences(context: AgentContext, root: Conversation
   const issueNumber = root.number;
   if (!owner || !repo || issueNumber === undefined) return [];
 
-  let body = "";
-  let bodyHtml = "";
+  const rawReferences: OutboundReference[] = [];
+  const bodyResult = await fetchIssueBodyAndReferences(context, owner, repo, issueNumber);
+  if (!bodyResult) return [];
+  rawReferences.push(...bodyResult);
+
+  const commentReferences = await fetchCommentReferences(context, owner, repo, issueNumber);
+  rawReferences.push(...commentReferences);
+
+  const references = dedupeReferences(rawReferences)
+    .filter((ref) => !isSameReference(root, ref))
+    .slice(0, OUTBOUND_REFERENCE_LIMIT);
+  const nodes: ConversationNode[] = [];
+  for (const ref of references) {
+    const node = await fetchReferenceNode(context, ref);
+    if (node && node.id !== root.id) nodes.push(node);
+  }
+  return nodes;
+}
+
+async function fetchIssueBodyAndReferences(context: AgentContext, owner: string, repo: string, issueNumber: number): Promise<OutboundReference[] | null> {
   try {
     const { data } = await context.octokit.rest.issues.get({
       owner,
@@ -378,15 +415,17 @@ async function fetchOutboundReferences(context: AgentContext, root: Conversation
       issue_number: issueNumber,
       headers: { accept: "application/vnd.github.v3.html+json" },
     });
-    body = typeof data.body === "string" ? data.body : "";
-    bodyHtml = typeof data.body_html === "string" ? data.body_html : "";
+    const body = typeof data.body === "string" ? data.body : "";
+    const bodyHtml = typeof data.body_html === "string" ? data.body_html : "";
+    return bodyHtml ? extractReferencesFromHtml(bodyHtml) : extractReferencesFromText(body);
   } catch (error) {
     context.logger.debug?.("Failed to fetch issue body for outbound references (non-fatal)", { err: error, owner, repo, issueNumber });
-    return [];
+    return null;
   }
+}
 
-  const rawReferences = bodyHtml ? extractReferencesFromHtml(bodyHtml) : extractReferencesFromText(body);
-
+async function fetchCommentReferences(context: AgentContext, owner: string, repo: string, issueNumber: number): Promise<OutboundReference[]> {
+  const out: OutboundReference[] = [];
   try {
     const { data: comments } = await context.octokit.rest.issues.listComments({
       owner,
@@ -401,24 +440,15 @@ async function fetchOutboundReferences(context: AgentContext, root: Conversation
       const html = typeof comment?.body_html === "string" ? comment.body_html : "";
       const text = typeof comment?.body === "string" ? comment.body : "";
       if (html) {
-        rawReferences.push(...extractReferencesFromHtml(html));
+        out.push(...extractReferencesFromHtml(html));
       } else if (text) {
-        rawReferences.push(...extractReferencesFromText(text));
+        out.push(...extractReferencesFromText(text));
       }
     }
   } catch (error) {
     context.logger.debug?.("Failed to fetch issue comments for outbound references (non-fatal)", { err: error, owner, repo, issueNumber });
   }
-
-  const references = dedupeReferences(rawReferences)
-    .filter((ref) => !isSameReference(root, ref))
-    .slice(0, OUTBOUND_REFERENCE_LIMIT);
-  const nodes: ConversationNode[] = [];
-  for (const ref of references) {
-    const node = await fetchReferenceNode(context, ref);
-    if (node && node.id !== root.id) nodes.push(node);
-  }
-  return nodes;
+  return out;
 }
 
 async function fetchConversationSnapshot(context: AgentContext, nodeId: string): Promise<ConversationSnapshot | null> {
@@ -541,28 +571,42 @@ async function fetchConversationSnapshot(context: AgentContext, nodeId: string):
     if (!root) return null;
 
     const linked: ConversationNode[] = [];
-    const timelineItems = isRecord(data.node?.timelineItems) ? data.node?.timelineItems : null;
-    if (timelineItems && Array.isArray(timelineItems.nodes)) {
-      for (const item of timelineItems.nodes) {
-        if (!isRecord(item)) continue;
-        for (const candidate of [item.source, item.subject, item.target]) {
-          const parsed = parseConversationNode(candidate);
-          if (parsed && parsed.id !== root.id) linked.push(parsed);
-        }
-      }
-    }
-
-    if (isRecord(data.node?.closingIssuesReferences) && Array.isArray(data.node?.closingIssuesReferences.nodes)) {
-      for (const node of data.node?.closingIssuesReferences.nodes ?? []) {
-        const parsed = parseConversationNode(node);
-        if (parsed && parsed.id !== root.id) linked.push(parsed);
-      }
-    }
+    extractTimelineNodes(data.node, root.id, linked);
+    extractClosingNodes(data.node, root.id, linked);
 
     return { root, linked };
   } catch (error) {
     context.logger.debug?.("Failed to fetch conversation links (non-fatal)", { err: error });
     return null;
+  }
+}
+
+function extractTimelineNodes(node: Record<string, unknown> | undefined, rootId: string, out: ConversationNode[]) {
+  const timelineItems = isRecord(node?.timelineItems) ? node?.timelineItems : null;
+  if (!timelineItems || !Array.isArray(timelineItems.nodes)) return;
+
+  for (const item of timelineItems.nodes) {
+    if (isRecord(item)) {
+      addCandidateNodes(item, rootId, out);
+    }
+  }
+}
+
+function addCandidateNodes(item: Record<string, unknown>, rootId: string, out: ConversationNode[]) {
+  for (const candidate of [item.source, item.subject, item.target]) {
+    const parsed = parseConversationNode(candidate);
+    if (parsed && parsed.id !== rootId) {
+      out.push(parsed);
+    }
+  }
+}
+
+function extractClosingNodes(node: Record<string, unknown> | undefined, rootId: string, out: ConversationNode[]) {
+  if (isRecord(node?.closingIssuesReferences) && Array.isArray(node?.closingIssuesReferences.nodes)) {
+    for (const item of node?.closingIssuesReferences.nodes ?? []) {
+      const parsed = parseConversationNode(item);
+      if (parsed && parsed.id !== rootId) out.push(parsed);
+    }
   }
 }
 
@@ -573,57 +617,52 @@ async function getSubjectNode(context: AgentContext): Promise<ConversationNode |
   const repo = normalizeString(repository?.name);
 
   if ("pull_request" in payload && isRecord(payload.pull_request)) {
-    const pr = payload.pull_request as Record<string, unknown>;
-    const node = parseConversationNode({
-      __typename: "PullRequest",
-      id: pr.node_id,
-      number: pr.number,
-      title: pr.title,
-      url: pr.html_url ?? pr.url,
-      createdAt: pr.created_at,
-      repository: { name: repo, owner: { login: owner } },
-    });
-    if (node) return node;
+    return parseSubjectPullRequest(payload.pull_request as Record<string, unknown>, owner, repo);
   }
 
   if ("issue" in payload && isRecord(payload.issue)) {
-    const issue = payload.issue as Record<string, unknown>;
-    const isPullRequest = Boolean(issue.pull_request);
-    if (isPullRequest && owner && repo && typeof issue.number === "number") {
-      try {
-        const { data } = await context.octokit.rest.pulls.get({
-          owner,
-          repo,
-          pull_number: issue.number,
-        });
-        const node = parseConversationNode({
-          __typename: "PullRequest",
-          id: data.node_id,
-          number: data.number,
-          title: data.title,
-          url: data.html_url ?? data.url,
-          createdAt: data.created_at,
-          repository: { name: repo, owner: { login: owner } },
-        });
-        if (node) return node;
-      } catch (error) {
-        context.logger.debug?.("Failed to hydrate PR node for issue comment (non-fatal)", { err: error });
-      }
-    }
-
-    const node = parseConversationNode({
-      __typename: "Issue",
-      id: issue.node_id,
-      number: issue.number,
-      title: issue.title,
-      url: issue.html_url ?? issue.url,
-      createdAt: issue.created_at,
-      repository: { name: repo, owner: { login: owner } },
-    });
-    if (node) return node;
+    return await parseSubjectIssue(context, payload.issue as Record<string, unknown>, owner, repo);
   }
 
   return null;
+}
+
+function parseSubjectPullRequest(pr: Record<string, unknown>, owner: string, repo: string): ConversationNode | null {
+  return parseConversationNode({
+    __typename: "PullRequest",
+    id: pr.node_id,
+    number: pr.number,
+    title: pr.title,
+    url: pr.html_url ?? pr.url,
+    createdAt: pr.created_at,
+    repository: { name: repo, owner: { login: owner } },
+  });
+}
+
+async function parseSubjectIssue(context: AgentContext, issue: Record<string, unknown>, owner: string, repo: string): Promise<ConversationNode | null> {
+  if (issue.pull_request && owner && repo && typeof issue.number === "number") {
+    try {
+      const { data } = await context.octokit.rest.pulls.get({
+        owner,
+        repo,
+        pull_number: issue.number,
+      });
+      const node = parseSubjectPullRequest(data as Record<string, unknown>, owner, repo);
+      if (node) return node;
+    } catch (error) {
+      context.logger.debug?.("Failed to hydrate PR node for issue comment (non-fatal)", { err: error });
+    }
+  }
+
+  return parseConversationNode({
+    __typename: "Issue",
+    id: issue.node_id,
+    number: issue.number,
+    title: issue.title,
+    url: issue.html_url ?? issue.url,
+    createdAt: issue.created_at,
+    repository: { name: repo, owner: { login: owner } },
+  });
 }
 
 async function resolveAliasKey(kv: KvLike, key: string): Promise<string> {
@@ -649,8 +688,10 @@ function pickCanonicalNode(nodes: ConversationNode[]): ConversationNode {
 }
 
 function compareNodes(a: ConversationNode, b: ConversationNode): number {
-  const typeRank = (node: ConversationNode) => (node.type === "Issue" ? 0 : 1);
-  const rankDiff = typeRank(a) - typeRank(b);
+  function getTypeRank(node: ConversationNode) {
+    return node.type === "Issue" ? 0 : 1;
+  }
+  const rankDiff = getTypeRank(a) - getTypeRank(b);
   if (rankDiff !== 0) return rankDiff;
   const aTime = Date.parse(a.createdAt);
   const bTime = Date.parse(b.createdAt);
@@ -726,6 +767,48 @@ function dedupeNodes(nodes: ConversationNode[]): ConversationNode[] {
 }
 
 export async function resolveConversationKeyForContext(context: AgentContext, logger?: LoggerLike): Promise<ConversationKeyResult | null> {
+  const snapshotData = await getConversationNodes(context);
+  if (!snapshotData) return null;
+
+  const kv = await getKvClient(logger ?? context.logger);
+  if (!kv) return { key: snapshotData.root.id, root: snapshotData.root, linked: snapshotData.linked };
+
+  return await resolveConversationKeyWithKv(kv, snapshotData);
+}
+
+async function resolveConversationKeyWithKv(
+  kv: KvLike,
+  snapshotData: NonNullable<Awaited<ReturnType<typeof getConversationNodes>>>
+): Promise<ConversationKeyResult> {
+  const { nodes, graph } = snapshotData;
+  const { existingKeys, canonical, canonicalKey } = await collectAndPickCanonical(kv, nodes);
+  ensureCanonicalInGraph(graph, canonical, canonicalKey);
+  await applyKeyResolutionEdits(kv, nodes, existingKeys, canonical, canonicalKey);
+  return { key: canonicalKey, root: snapshotData.root, linked: snapshotData.linked };
+}
+
+async function applyKeyResolutionEdits(kv: KvLike, nodes: ConversationNode[], existingKeys: Set<string>, canonical: ConversationNode, canonicalKey: string) {
+  await mergeExistingKeys(kv, existingKeys, canonicalKey);
+  await persistNodes(kv, nodes, canonical, canonicalKey);
+}
+
+async function collectAndPickCanonical(kv: KvLike, nodes: ConversationNode[]) {
+  const existingKeys = new Set<string>();
+  const candidateNodes: ConversationNode[] = await collectCandidateNodes(kv, nodes, existingKeys);
+
+  const canonical = pickCanonicalNode(dedupeNodes(candidateNodes));
+  const canonicalKey = canonical.id;
+
+  return { existingKeys, canonical, canonicalKey };
+}
+
+function ensureCanonicalInGraph(graph: SimpleGraph, canonical: ConversationNode, canonicalKey: string) {
+  if (!hasNode(graph, canonicalKey)) {
+    addNode(graph, canonicalKey, canonical);
+  }
+}
+
+async function getConversationNodes(context: AgentContext) {
   const subject = await getSubjectNode(context);
   if (!subject) return null;
 
@@ -736,70 +819,55 @@ export async function resolveConversationKeyForContext(context: AgentContext, lo
   const nodes = listNodeIds(graph)
     .map((id) => getNodeAttributes(graph, id))
     .filter((node): node is ConversationNode => Boolean(node));
+  return { root: snapshot.root, linked, nodes, graph };
+}
 
-  const kv = await getKvClient(logger ?? context.logger);
-  if (!kv) {
-    return { key: snapshot.root.id, root: snapshot.root, linked: snapshot.linked };
+async function persistNodes(kv: KvLike, nodes: ConversationNode[], canonical: ConversationNode, canonicalKey: string) {
+  for (const node of nodes) {
+    await persistNode(kv, node, canonicalKey);
   }
+  await persistNode(kv, canonical, canonicalKey);
+}
 
-  const candidateNodes: ConversationNode[] = [...nodes];
-  const existingKeys = new Set<string>();
+async function mergeExistingKeys(kv: KvLike, existingKeys: Set<string>, canonicalKey: string) {
+  for (const key of existingKeys) {
+    const resolvedKey = await resolveAliasKey(kv, key);
+    if (resolvedKey !== canonicalKey) await mergeKeys(kv, resolvedKey, canonicalKey);
+  }
+}
 
+async function collectCandidateNodes(kv: KvLike, nodes: ConversationNode[], outExistingKeys: Set<string>): Promise<ConversationNode[]> {
+  const outCandidateNodes: ConversationNode[] = [...nodes];
   for (const node of nodes) {
     const record = await getNodeRecord(kv, node.id);
     if (record) {
       const resolvedKey = await resolveAliasKey(kv, record.key);
-      existingKeys.add(resolvedKey);
-      candidateNodes.push({
-        id: record.id,
-        type: record.type,
-        createdAt: record.createdAt,
-        url: record.url,
-        owner: record.owner,
-        repo: record.repo,
-        number: record.number,
-        title: record.title,
-      });
+      outExistingKeys.add(resolvedKey);
+      outCandidateNodes.push(recordToNode(record));
     }
   }
+  await collectExistingKeyRecords(kv, outExistingKeys, outCandidateNodes);
+  return outCandidateNodes;
+}
 
+async function collectExistingKeyRecords(kv: KvLike, existingKeys: Set<string>, outCandidateNodes: ConversationNode[]) {
   for (const key of existingKeys) {
     const record = await getNodeRecord(kv, key);
-    if (record) {
-      candidateNodes.push({
-        id: record.id,
-        type: record.type,
-        createdAt: record.createdAt,
-        url: record.url,
-        owner: record.owner,
-        repo: record.repo,
-        number: record.number,
-        title: record.title,
-      });
-    }
+    if (record) outCandidateNodes.push(recordToNode(record));
   }
+}
 
-  const canonical = pickCanonicalNode(dedupeNodes(candidateNodes));
-  const canonicalKey = canonical.id;
-
-  if (!hasNode(graph, canonicalKey)) {
-    addNode(graph, canonicalKey, canonical);
-  }
-
-  for (const key of existingKeys) {
-    const resolvedKey = await resolveAliasKey(kv, key);
-    if (resolvedKey !== canonicalKey) {
-      await mergeKeys(kv, resolvedKey, canonicalKey);
-    }
-  }
-
-  for (const node of nodes) {
-    await persistNode(kv, node, canonicalKey);
-  }
-
-  await persistNode(kv, canonical, canonicalKey);
-
-  return { key: canonicalKey, root: snapshot.root, linked };
+function recordToNode(record: ConversationNodeRecord): ConversationNode {
+  return {
+    id: record.id,
+    type: record.type,
+    createdAt: record.createdAt,
+    url: record.url,
+    owner: record.owner,
+    repo: record.repo,
+    number: record.number,
+    title: record.title,
+  };
 }
 
 export async function listConversationNodesForKey(context: AgentContext, key: string, limit = 40, logger?: LoggerLike): Promise<ConversationNode[]> {
@@ -813,16 +881,7 @@ export async function listConversationNodesForKey(context: AgentContext, key: st
   for (const nodeId of uniqueIds) {
     const record = await getNodeRecord(kv, nodeId);
     if (!record) continue;
-    nodes.push({
-      id: record.id,
-      type: record.type,
-      createdAt: record.createdAt,
-      url: record.url,
-      owner: record.owner,
-      repo: record.repo,
-      number: record.number,
-      title: record.title,
-    });
+    nodes.push(recordToNode(record));
   }
   return nodes;
 }

@@ -263,7 +263,7 @@ async function main(): Promise<void> {
   }
 
   const ref = parseIssueUrl(options.issueUrl);
-  const token = selectPatToken({ isSelf: true }) || null;
+  const token = selectPatToken() || null;
   const issue = await fetchIssueData(ref, token);
   const resolved = await resolveCommentBody({ options, ref, agentOwner, token });
   const command = parseCommandFromBody(resolved.body, agentOwner);
