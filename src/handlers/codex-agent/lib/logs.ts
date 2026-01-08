@@ -28,7 +28,12 @@ export function writeRuntimeLogs(params: { task: string; inputs: unknown; payloa
   }
 }
 
-export function logPayloadIfEnabled(args: { logger: { info: (...a: unknown[]) => unknown }; payload: unknown; task: string; inputs: unknown }): void {
+export function logPayloadIfEnabled(args: {
+  logger: { info: (log: string, metadata?: Record<string, unknown>) => unknown };
+  payload: unknown;
+  task: string;
+  inputs: unknown;
+}): void {
   const { logger, payload, task, inputs } = args;
   if (process.env.LOG_PROMPT === "1") {
     const rawLen = safeStringify(payload).length;
@@ -41,7 +46,7 @@ export async function maybeWriteRuntimeLogs(args: {
   task: string;
   inputs: unknown;
   payload: unknown;
-  logger: { info: (...a: unknown[]) => unknown };
+  logger: { info: (log: string, metadata?: Record<string, unknown>) => unknown };
 }): Promise<void> {
   const { task, inputs, payload, logger } = args;
   if (process.env.WRITE_PROMPT_FILE !== "1") return;

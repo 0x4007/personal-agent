@@ -11,26 +11,10 @@ let cachedCodexAgent: Promise<CodexAgent> | undefined;
 
 async function loadCodexAgent(): Promise<CodexAgent> {
   if (!cachedCodexAgent) {
-    cachedCodexAgent = import("./handlers/codex-agent")
-      .then((mod) => mod.codexAgent as CodexAgent)
-      .catch(async (error) => {
-        if (!isModuleNotFound(error) || !import.meta.url.endsWith(".ts")) {
-          throw error;
-        }
-
-        const fallbackUrl = new URL("./handlers/codex-agent.ts", import.meta.url);
-        const fallbackModule = await import(fallbackUrl.href);
-        return fallbackModule.codexAgent as CodexAgent;
-      });
+    cachedCodexAgent = import("./handlers/codex-agent").then((mod) => mod.codexAgent as CodexAgent);
   }
 
   return cachedCodexAgent;
-}
-
-function isModuleNotFound(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false;
-
-  return "code" in error && (error as { code?: unknown }).code === "ERR_MODULE_NOT_FOUND";
 }
 
 function parseJsonInput<T>(value: unknown, fallback: T): T {
@@ -124,7 +108,7 @@ async function mainFromActionsEnv() {
 
     const { token: writeToken, source: tokenSource } = requirePatToken({ purpose: "GitHub API access" });
     const octokit = new customOctokit({ auth: writeToken });
-    const context: Record<string, unknown> = {
+    const context = {
       eventName,
       payload,
       env: process.env,
@@ -139,7 +123,7 @@ async function mainFromActionsEnv() {
 
     logger.info("[auth] Using PAT for GitHub API", { tokenSource, kernelAuthProvided: Boolean(authToken) });
 
-    await runPlugin(context as Context);
+    await runPlugin(context as unknown as Context);
   } catch (e) {
     console.error("[fatal] Actions runner error", e);
     process.exit(1);

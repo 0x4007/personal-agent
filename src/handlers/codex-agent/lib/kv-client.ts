@@ -20,9 +20,10 @@ type KvLike = Readonly<{
 }>;
 
 type LoggerLike = Readonly<{
-  warn?: (obj: unknown, msg?: string) => void;
-  debug?: (obj: unknown, msg?: string) => void;
-  error?: (obj: unknown, msg?: string) => void;
+  info?: (log: string, metadata?: Record<string, unknown>) => unknown;
+  warn?: (log: string, metadata?: Record<string, unknown>) => unknown;
+  debug?: (log: string, metadata?: Record<string, unknown>) => unknown;
+  error?: (log: string, metadata?: Record<string, unknown>) => unknown;
 }>;
 
 let kvClientPromise: Promise<KvLike | null> | null = null;
@@ -147,7 +148,7 @@ export async function getKvClient(logger?: LoggerLike): Promise<KvLike | null> {
         supportsReverse: true,
       };
     } catch (error) {
-      if (logger?.debug) logger.debug({ err: error }, "Failed to open Deno KV (non-fatal)");
+      if (logger?.debug) logger.debug("Failed to open Deno KV (non-fatal)", { error });
       return null;
     }
   })();

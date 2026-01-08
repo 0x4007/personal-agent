@@ -98,7 +98,7 @@ function buildAgentSettings(context: Context, overrides?: Record<string, unknown
 export async function dispatchAgentWorkflow(args: {
   context: Context;
   task: string;
-  logger: { info: (...a: unknown[]) => void };
+  logger: { info: (log: string, metadata?: Record<string, unknown>) => unknown };
   settingsOverrides?: Record<string, unknown>;
 }): Promise<AgentDispatchResult> {
   const { context, task, logger, settingsOverrides } = args;

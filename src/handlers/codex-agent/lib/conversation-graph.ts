@@ -1,4 +1,4 @@
-/* eslint-disable sonarjs/cognitive-complexity */
+/* eslint-disable sonarjs/cognitive-complexity, func-style */
 import { getKvClient, type KvKey, type KvLike, type LoggerLike } from "./kv-client";
 
 type ConversationNodeType = "Issue" | "PullRequest";
@@ -358,7 +358,7 @@ async function fetchReferenceNode(context: AgentContext, reference: OutboundRefe
     }
     return await fetchIssueNode(context, owner, repo, number);
   } catch (error) {
-    context.logger.debug({ err: error, owner, repo, number }, "Failed to resolve outbound reference (non-fatal)");
+    context.logger.debug?.("Failed to resolve outbound reference (non-fatal)", { err: error, owner, repo, number });
     return null;
   }
 }
@@ -381,7 +381,7 @@ async function fetchOutboundReferences(context: AgentContext, root: Conversation
     body = typeof data.body === "string" ? data.body : "";
     bodyHtml = typeof data.body_html === "string" ? data.body_html : "";
   } catch (error) {
-    context.logger.debug({ err: error, owner, repo, issueNumber }, "Failed to fetch issue body for outbound references (non-fatal)");
+    context.logger.debug?.("Failed to fetch issue body for outbound references (non-fatal)", { err: error, owner, repo, issueNumber });
     return [];
   }
 
@@ -407,7 +407,7 @@ async function fetchOutboundReferences(context: AgentContext, root: Conversation
       }
     }
   } catch (error) {
-    context.logger.debug({ err: error, owner, repo, issueNumber }, "Failed to fetch issue comments for outbound references (non-fatal)");
+    context.logger.debug?.("Failed to fetch issue comments for outbound references (non-fatal)", { err: error, owner, repo, issueNumber });
   }
 
   const references = dedupeReferences(rawReferences)
@@ -561,7 +561,7 @@ async function fetchConversationSnapshot(context: AgentContext, nodeId: string):
 
     return { root, linked };
   } catch (error) {
-    context.logger.debug({ err: error }, "Failed to fetch conversation links (non-fatal)");
+    context.logger.debug?.("Failed to fetch conversation links (non-fatal)", { err: error });
     return null;
   }
 }
@@ -607,7 +607,7 @@ async function getSubjectNode(context: AgentContext): Promise<ConversationNode |
         });
         if (node) return node;
       } catch (error) {
-        context.logger.debug({ err: error }, "Failed to hydrate PR node for issue comment (non-fatal)");
+        context.logger.debug?.("Failed to hydrate PR node for issue comment (non-fatal)", { err: error });
       }
     }
 

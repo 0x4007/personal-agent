@@ -28,7 +28,3 @@ export function requirePatToken(opts?: { purpose?: string }): PatResolution {
   }
   return resolution;
 }
-
-export function selectWriteToken(): string {
-  return requirePatToken({ purpose: "write operations" }).token;
-}

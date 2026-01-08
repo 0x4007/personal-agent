@@ -1,6 +1,4 @@
-import { fetchRepoLabels, StyleExample } from "./github";
-import { selectPatToken } from "./config";
-import { safeStringify, stripUrlFields } from "./utils";
+import { StyleExample } from "./github";
 
 function formatStyleExamples(examples: StyleExample[], agentOwner: string): string {
   if (!examples.length) return "";
@@ -66,55 +64,4 @@ export function buildRichPrompt(args: {
 
   Produce only the final GitHub comment now.`;
   return base.replace(/\n\s+/g, "\n");
-}
-
-function wrapJson(json: string): string {
-  // Wrap in fenced block to preserve structure in LLM prompt
-  return json ? "```json\n" + json + "\n```" : "";
-}
-
-export async function buildFullPrompt(args: {
-  richPrompt: string;
-  command: string;
-  payload: unknown;
-  fetchedContext: unknown;
-  owner: string;
-  repo: string;
-  logger: { info: (...a: unknown[]) => unknown };
-}): Promise<{ prompt: string; eventJson: string; contextJson: string; isMinimal: boolean }> {
-  const { richPrompt, command, payload, fetchedContext, owner, repo, logger } = args;
-  const minimalPrompt = command;
-  const isMinimal = process.env.PROMPT_MINIMAL === "1" || process.env.UOS_PROMPT_MINIMAL === "1" || process.env.PI_MINIMAL === "1";
-  const doesIncludeEventJson = process.env.PROMPT_INCLUDE_EVENT === "1" || process.env.INCLUDE_GH_EVENT === "1";
-  const shouldStrip = (process.env.PROMPT_STRIP_URLS ?? "1") === "1";
-  let eventForPrompt: unknown = undefined;
-  if (doesIncludeEventJson) {
-    eventForPrompt = shouldStrip ? stripUrlFields(payload) : payload;
-  }
-  const eventJson = doesIncludeEventJson ? safeStringify(eventForPrompt) : "";
-  const contextJson = fetchedContext ? safeStringify(stripUrlFields(fetchedContext)) : "";
-  const basePrompt = isMinimal ? minimalPrompt : richPrompt;
-  let prompt = basePrompt;
-
-  // Optional: prefetch repository labels to include in the prompt (disabled by default)
-  const shouldFetchLabels = process.env.PROMPT_FETCH_LABELS === "1";
-  if (contextJson) {
-    prompt += `\n\nGitHub context (prefetched):\n\n${wrapJson(contextJson)}`;
-  }
-  if (shouldFetchLabels) {
-    try {
-      const token = selectPatToken();
-      const repoLabels = await fetchRepoLabels({ owner, repo, token });
-      if (repoLabels.length) {
-        const labelsJson = safeStringify(repoLabels);
-        prompt += `\n\nRepository labels (prefetched):\n\n${wrapJson(labelsJson)}`;
-      }
-    } catch (e) {
-      logger.info("[codexAgent] Prefetch labels failed (non-fatal)", { error: String(e) });
-    }
-  }
-  if (doesIncludeEventJson) {
-    prompt += `\n\nFull GitHub event JSON (verbatim):\n\n${wrapJson(eventJson)}`;
-  }
-  return { prompt, eventJson, contextJson, isMinimal };
 }

@@ -6215,6 +6215,69 @@ var init_config = __esm({
   }
 });
 
+// src/handlers/codex-agent/lib/prompt.ts
+function formatStyleExamples(examples, agentOwner) {
+  if (!examples.length) return "";
+  const lines = examples.map((example) => {
+    const meta = [];
+    if (example.repo) meta.push(example.repo);
+    if (example.createdAt) meta.push(example.createdAt.slice(0, 10));
+    const prefix = meta.length ? `(${meta.join(", ")}) ` : "";
+    return `- ${prefix}${example.body}`;
+  });
+  return `Writing style samples from @${agentOwner} (for tone only; do not quote verbatim):
+${lines.join("\n")}`;
+}
+function buildRichPrompt(args) {
+  const { accessLevel, isPr, owner, repo, issueNumber, sender, agentOwner, command, styleExamples } = args;
+  const styleBlock = formatStyleExamples(styleExamples ?? [], agentOwner);
+  const base = `
+  [mode:${accessLevel}] [type:${isPr ? "pr" : "issue"}] repo:${owner}/${repo} ${isPr ? "pr" : "issue"}:${issueNumber} actor:${sender}
+  Environment: Linux shell with GitHub CLI (gh) available and authenticated with a GitHub token.
+  You are a GitHub assistant. You always return a single GitHub comment (no preamble, no wrappers).
+  You are ${agentOwner}. Write in ${agentOwner}'s voice and perspective.
+
+  User request:
+  ${command}${styleBlock ? "\n\n" + styleBlock : ""}
+
+  Output Contract:
+  - Output only the final comment text to post on GitHub.
+  - Do NOT include role labels (assistant:, system:, user:), system messages, logs, markers (e.g., GH_*_OK), transcripts, or thinking.
+  - Do NOT @mention any user or team (avoid loops). If you must reference a handle, render as plain text or code.
+
+  Style and Formatting (GitHub-flavored Markdown):
+  - Use short headings to structure longer replies only when helpful.
+  - Prefer bullet lists for enumerations; use one bullet per item.
+    - Never compress many items into one bullet via hyphens/commas; use multiple bullets instead.
+    - For 12+ similar items, a compact table is allowed if it improves scanability.
+  - Use checklists for actionable tasks (e.g., "- [ ] Step").
+  - Use code fences for commands, code, diffs, or JSON (\`\`\`bash, \`\`\`ts, \`\`\`json, \`\`\`diff).
+  - Do NOT wrap the entire response in a code block; only fence code/diff/json snippets.
+  - Link concisely with Markdown links or short refs (owner/repo#123). Avoid dumping long raw URLs.
+  - Keep paragraphs short (1-3 sentences). Prefer lists/tables for dense info. Do not paste huge raw JSON.
+  - Keep it concise: target about 800 characters unless a longer list is explicitly requested.
+
+  Content Rules:
+  - Always prefer live reads over inference: if the answer depends on repository data (labels, files, commits, diffs, milestones, prices, etc.), use gh or the GitHub API to read it first; do not guess or invent values.
+  - Summarize results; do not echo command lines or transcripts.
+  - If context is insufficient or shell access fails, state the single additional input or permission you need in one line, then proceed with what can be done now.
+  - When asked for a plan, produce a short, numbered list (5-8 items max), each one line.
+  - When asked for acceptance criteria, use bullets with clear, testable statements (concise Given/When/Then is fine).
+
+  Safety and Etiquette:
+  - No secrets or tokens.
+  - Do not self-trigger loops (no mentions in output).
+
+  Produce only the final GitHub comment now.`;
+  return base.replace(/\n\s+/g, "\n");
+}
+var init_prompt = __esm({
+  "src/handlers/codex-agent/lib/prompt.ts"() {
+    "use strict";
+    init_esm_shims();
+  }
+});
+
 // src/handlers/codex-agent/lib/utils.ts
 function toObject(v) {
   return v && typeof v === "object" ? v : {};
@@ -6913,7 +6976,7 @@ async function fetchStyleExamples(params) {
 }
 async function maybeFetchStyleExamples(args) {
   const { login, owner, repo, logger } = args;
-  const isStyleFetchEnabled = parseBool(getEnvString(["PROMPT_FETCH_STYLE", "UOS_STYLE_FETCH"], "1"), true);
+  const isStyleFetchEnabled = parseBool(getEnvString(["PROMPT_FETCH_STYLE", "UOS_STYLE_FETCH"]), true);
   if (!isStyleFetchEnabled) return [];
   if (!login) return [];
   try {
@@ -6944,72 +7007,6 @@ var init_github = __esm({
     }
   }
 }`;
-  }
-});
-
-// src/handlers/codex-agent/lib/prompt.ts
-function formatStyleExamples(examples, agentOwner) {
-  if (!examples.length) return "";
-  const lines = examples.map((example) => {
-    const meta = [];
-    if (example.repo) meta.push(example.repo);
-    if (example.createdAt) meta.push(example.createdAt.slice(0, 10));
-    const prefix = meta.length ? `(${meta.join(", ")}) ` : "";
-    return `- ${prefix}${example.body}`;
-  });
-  return `Writing style samples from @${agentOwner} (for tone only; do not quote verbatim):
-${lines.join("\n")}`;
-}
-function buildRichPrompt(args) {
-  const { accessLevel, isPr, owner, repo, issueNumber, sender, agentOwner, command, styleExamples } = args;
-  const styleBlock = formatStyleExamples(styleExamples ?? [], agentOwner);
-  const base = `
-  [mode:${accessLevel}] [type:${isPr ? "pr" : "issue"}] repo:${owner}/${repo} ${isPr ? "pr" : "issue"}:${issueNumber} actor:${sender}
-  Environment: Linux shell with GitHub CLI (gh) available and authenticated with a GitHub token.
-  You are a GitHub assistant. You always return a single GitHub comment (no preamble, no wrappers).
-  You are ${agentOwner}. Write in ${agentOwner}'s voice and perspective.
-
-  User request:
-  ${command}${styleBlock ? "\n\n" + styleBlock : ""}
-
-  Output Contract:
-  - Output only the final comment text to post on GitHub.
-  - Do NOT include role labels (assistant:, system:, user:), system messages, logs, markers (e.g., GH_*_OK), transcripts, or thinking.
-  - Do NOT @mention any user or team (avoid loops). If you must reference a handle, render as plain text or code.
-
-  Style and Formatting (GitHub-flavored Markdown):
-  - Use short headings to structure longer replies only when helpful.
-  - Prefer bullet lists for enumerations; use one bullet per item.
-    - Never compress many items into one bullet via hyphens/commas; use multiple bullets instead.
-    - For 12+ similar items, a compact table is allowed if it improves scanability.
-  - Use checklists for actionable tasks (e.g., "- [ ] Step").
-  - Use code fences for commands, code, diffs, or JSON (\`\`\`bash, \`\`\`ts, \`\`\`json, \`\`\`diff).
-  - Do NOT wrap the entire response in a code block; only fence code/diff/json snippets.
-  - Link concisely with Markdown links or short refs (owner/repo#123). Avoid dumping long raw URLs.
-  - Keep paragraphs short (1-3 sentences). Prefer lists/tables for dense info. Do not paste huge raw JSON.
-  - Keep it concise: target about 800 characters unless a longer list is explicitly requested.
-
-  Content Rules:
-  - Always prefer live reads over inference: if the answer depends on repository data (labels, files, commits, diffs, milestones, prices, etc.), use gh or the GitHub API to read it first; do not guess or invent values.
-  - Summarize results; do not echo command lines or transcripts.
-  - If context is insufficient or shell access fails, state the single additional input or permission you need in one line, then proceed with what can be done now.
-  - When asked for a plan, produce a short, numbered list (5-8 items max), each one line.
-  - When asked for acceptance criteria, use bullets with clear, testable statements (concise Given/When/Then is fine).
-
-  Safety and Etiquette:
-  - No secrets or tokens.
-  - Do not self-trigger loops (no mentions in output).
-
-  Produce only the final GitHub comment now.`;
-  return base.replace(/\n\s+/g, "\n");
-}
-var init_prompt = __esm({
-  "src/handlers/codex-agent/lib/prompt.ts"() {
-    "use strict";
-    init_esm_shims();
-    init_github();
-    init_config();
-    init_utils();
   }
 });
 
@@ -7123,7 +7120,7 @@ async function getKvClient(logger) {
         supportsReverse: true
       };
     } catch (error) {
-      if (logger?.debug) logger.debug({ err: error }, "Failed to open Deno KV (non-fatal)");
+      if (logger?.debug) logger.debug("Failed to open Deno KV (non-fatal)", { error });
       return null;
     }
   })();
@@ -9276,6 +9273,12 @@ async function codexAgent(context) {
   const issueNumber = payload.issue.number;
   const isPr = Boolean(payload.issue?.pull_request);
   const owner = payload.repository.owner.login;
+  const whitelistedOrgs = ["placeholder-org"];
+  const lowerOwner = owner.toLowerCase();
+  if (!whitelistedOrgs.includes(lowerOwner)) {
+    logger.info(`Request from non-whitelisted org: ${owner}`);
+    return;
+  }
   const body = String(payload.comment.body || "");
   const agentOwner = env.AGENT_OWNER;
   if (!agentOwner) {
@@ -9283,7 +9286,11 @@ async function codexAgent(context) {
     return;
   }
   const isSelf = Boolean(sender && agentOwner && String(sender).toLowerCase() === String(agentOwner).toLowerCase());
-  const accessLevel = isSelf ? "full" : "read-only";
+  const accessLevel = isSelf ? "full" : "disabled";
+  if (accessLevel === "disabled") {
+    logger.info("Skipping execution: agent is in disabled mode for non-owners.", { sender, repo, issueNumber, owner, agentOwner, accessLevel });
+    return;
+  }
   logger.info("Executing codexAgent", { sender, repo, issueNumber, owner, agentOwner, accessLevel });
   const trimmed = body.trim();
   const mention = `@${agentOwner}`;
@@ -9293,7 +9300,9 @@ async function codexAgent(context) {
   }
   const command = trimmed.slice(mention.length).replace(/^[:,]?\s+/, "").trim();
   if (!command) {
-    await context.commentHandler.postComment(context, logger.error("No command provided after username mention"));
+    const errorBody = "No command provided after username mention";
+    logger.error(errorBody);
+    await context.commentHandler.postComment(context, errorBody);
     return;
   }
   const isMinimalEnv = process.env.PROMPT_MINIMAL === "1" || process.env.UOS_PROMPT_MINIMAL === "1" || process.env.PI_MINIMAL === "1";

@@ -1,4 +1,4 @@
-/* eslint-disable sonarjs/cognitive-complexity */
+/* eslint-disable sonarjs/cognitive-complexity, sonarjs/no-empty-collection, sonarjs/no-gratuitous-expressions */
 type AgentRunMemoryEntry = Readonly<{
   kind: "agent_run";
   stateId: string;
@@ -29,7 +29,6 @@ const inMemory = new Map<string, AgentRunMemoryEntry[]>();
 let kvPromise: Promise<KvLike | null> | null = null;
 let memoryKeyPromise: Promise<CryptoKey | null> | null = null;
 const warned = new Set<string>();
-const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
 function toBufferSource(bytes: Uint8Array): ArrayBuffer {
@@ -42,7 +41,7 @@ function warnOnce(logger: LoggerLike | undefined, key: string, message: string, 
   if (!logger || typeof logger.warn !== "function" || warned.has(key)) return;
   warned.add(key);
   if (err !== undefined) {
-    logger.warn({ err }, message);
+    logger.warn(message, { err });
   } else {
     logger.warn(message);
   }
@@ -99,20 +98,6 @@ function decodeBase64Bytes(input: string): Uint8Array | null {
   }
 }
 
-function encodeBase64Bytes(bytes: Uint8Array): string {
-  const btoaFn = (globalThis as { btoa?: (data: string) => string }).btoa;
-  if (typeof btoaFn !== "function") {
-    throw new Error("btoa is unavailable");
-  }
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoaFn(binary);
-}
-
 async function getMemoryCryptoKey(logger?: LoggerLike): Promise<CryptoKey | null> {
   if (memoryKeyPromise) return memoryKeyPromise;
   memoryKeyPromise = (async () => {
@@ -140,19 +125,6 @@ async function getMemoryCryptoKey(logger?: LoggerLike): Promise<CryptoKey | null
   return memoryKeyPromise;
 }
 
-async function compressBytes(payload: Uint8Array): Promise<Uint8Array> {
-  const ctor = (globalThis as { CompressionStream?: typeof CompressionStream }).CompressionStream;
-  if (!ctor) {
-    throw new Error("CompressionStream is unavailable");
-  }
-  const stream = new ctor("gzip");
-  const writer = stream.writable.getWriter();
-  await writer.write(toBufferSource(payload));
-  await writer.close();
-  const buffer = await new Response(stream.readable).arrayBuffer();
-  return new Uint8Array(buffer);
-}
-
 async function decompressBytes(payload: Uint8Array): Promise<Uint8Array> {
   const ctor = (globalThis as { DecompressionStream?: typeof DecompressionStream }).DecompressionStream;
   if (!ctor) {
@@ -169,22 +141,6 @@ async function decompressBytes(payload: Uint8Array): Promise<Uint8Array> {
 function isMemoryEnvelope(value: unknown): value is AgentMemoryEnvelope {
   if (!isRecord(value)) return false;
   return value.v === 1 && value.alg === "A256GCM" && value.codec === "json+gzip" && typeof value.iv === "string" && typeof value.data === "string";
-}
-
-async function encodeEntry(entry: AgentRunMemoryEntry, logger?: LoggerLike): Promise<AgentMemoryEnvelope | null> {
-  const key = await getMemoryCryptoKey(logger);
-  if (!key) return null;
-  const compressed = await compressBytes(textEncoder.encode(JSON.stringify(entry)));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ivSource = toBufferSource(iv);
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: ivSource }, key, toBufferSource(compressed));
-  return {
-    v: 1,
-    alg: "A256GCM",
-    iv: encodeBase64Bytes(iv),
-    data: encodeBase64Bytes(new Uint8Array(ciphertext)),
-    codec: "json+gzip",
-  };
 }
 
 async function decodeEntry(value: unknown, logger?: LoggerLike): Promise<AgentRunMemoryEntry | null> {
@@ -228,10 +184,6 @@ function buildMapKey(owner: string, repo: string, scopeKey?: string): string {
   return `${owner}/${repo}`;
 }
 
-function buildEventKey(owner: string, repo: string, updatedAt: string, stateId: string, scopeKey?: string): KvKey {
-  return [...buildKvKey(owner, repo, scopeKey), updatedAt, stateId];
-}
-
 async function getKv(logger?: LoggerLike): Promise<KvLike | null> {
   if (kvPromise) return kvPromise;
   kvPromise = (async () => {
@@ -261,10 +213,6 @@ function parseEntryRecord(value: unknown): AgentRunMemoryEntry | null {
     prUrl: normalizeString(value.prUrl).trim() || undefined,
     summary: clampText(normalizeString(value.summary), SUMMARY_MAX_CHARS) || undefined,
   };
-}
-
-function sanitizeEntry(value: AgentRunMemoryEntry): AgentRunMemoryEntry | null {
-  return parseEntryRecord(value);
 }
 
 async function readEntriesFromKv(
@@ -314,57 +262,6 @@ async function readEntriesFromKv(
   return buffer;
 }
 
-async function upsertAgentRunMemoryScope(
-  params: Readonly<{
-    owner: string;
-    repo: string;
-    entry: AgentRunMemoryEntry;
-    logger?: LoggerLike;
-    scopeKey?: string;
-  }>
-): Promise<void> {
-  const owner = params.owner.trim();
-  const repo = params.repo.trim();
-  const entry = sanitizeEntry(params.entry);
-  if (!owner || !repo) return;
-  if (!entry) return;
-
-  const kv = await getKv(params.logger);
-  if (kv) {
-    try {
-      const encoded = await encodeEntry(entry, params.logger);
-      if (encoded) {
-        await kv.set(buildEventKey(owner, repo, entry.updatedAt, entry.stateId, params.scopeKey), encoded);
-        return;
-      }
-    } catch (error) {
-      warnOnce(params.logger, "agent-memory-write", "Failed to persist agent memory entry.", error);
-    }
-  }
-
-  const key = buildMapKey(owner, repo, params.scopeKey);
-  const entries = inMemory.get(key) ?? [];
-  entries.push(entry);
-  while (entries.length > IN_MEMORY_MAX_ENTRIES) entries.shift();
-  inMemory.set(key, entries);
-}
-
-export async function upsertAgentRunMemory(
-  params: Readonly<{
-    owner: string;
-    repo: string;
-    entry: AgentRunMemoryEntry;
-    logger?: LoggerLike;
-    scopeKey?: string;
-  }>
-): Promise<void> {
-  await upsertAgentRunMemoryScope(params);
-  const scope = normalizeScopeKey(params.scopeKey);
-  if (scope) {
-    await upsertAgentRunMemoryScope({ ...params, scopeKey: undefined });
-  }
-}
-
 export async function getAgentMemorySnippet(
   params: Readonly<{
     owner: string;
@@ -390,19 +287,19 @@ export async function getAgentMemorySnippet(
   }
 
   const key = buildMapKey(owner, repo, scope || undefined);
-  const localEntries = inMemory.get(key) ?? [];
-  if (localEntries.length > 0) {
+  const localEntries = inMemory.get(key);
+  if (localEntries && localEntries.length > 0) {
     entries.push(...localEntries.slice(-IN_MEMORY_MAX_ENTRIES).reverse());
   }
 
   if (entries.length === 0 && scope) {
     if (kv) {
-      entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger)));
+      entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger, scope || undefined)));
     }
     const repoKey = buildMapKey(owner, repo);
-    const repoEntries = inMemory.get(repoKey) ?? [];
-    if (repoEntries.length > 0) {
-      entries.push(...repoEntries.slice(-IN_MEMORY_MAX_ENTRIES).reverse());
+    const localRepoEntries = inMemory.get(repoKey);
+    if (localRepoEntries && localRepoEntries.length > 0) {
+      entries.push(...localRepoEntries.slice(-IN_MEMORY_MAX_ENTRIES).reverse());
     }
   }
 

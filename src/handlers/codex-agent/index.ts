@@ -80,11 +80,13 @@ export async function codexAgent(context: Context): Promise<void> {
     .trim();
 
   if (!command) {
-    await context.commentHandler.postComment(context, logger.error("No command provided after username mention"));
+    const errorBody = "No command provided after username mention";
+    logger.error(errorBody);
+    await context.commentHandler.postComment(context, errorBody as unknown as Error);
     return;
   }
 
-  const isMinimalEnv = process.env.PROMPT_MINIMAL === "1" || process.env.UOS_PROMPT_MINIMAL === "1" || process.env.PI_MINIMAL === "1";
+  const isMinimalEnv = env.PROMPT_MINIMAL === "1" || env.UOS_PROMPT_MINIMAL === "1" || env.PI_MINIMAL === "1";
 
   // Build a universal GitHub reply prompt (single comment output, clean GFM formatting)
   const styleExamples = isMinimalEnv ? [] : await maybeFetchStyleExamples({ login: agentOwner, owner, repo, logger });
@@ -103,7 +105,7 @@ export async function codexAgent(context: Context): Promise<void> {
   let task = isMinimal ? command : richPrompt;
 
   // Prompt-size guard: if task exceeds PROMPT_MAX_LEN, fall back to minimal
-  const promptMaxLenRaw = Number(process.env.PROMPT_MAX_LEN || 0);
+  const promptMaxLenRaw = Number(env.PROMPT_MAX_LEN || 0);
   const promptMaxLen = Number.isFinite(promptMaxLenRaw) && promptMaxLenRaw > 0 ? Math.floor(promptMaxLenRaw) : 0;
   if (!isMinimal && promptMaxLen > 0 && task.length > promptMaxLen) {
     logger.info("[codexAgent] Task exceeds PROMPT_MAX_LEN, falling back to minimal", { len: task.length, max: promptMaxLen });
@@ -115,7 +117,10 @@ export async function codexAgent(context: Context): Promise<void> {
   let conversationKey = "";
   let agentMemory = "";
   try {
-    const conversation = await resolveConversationKeyForContext(context, logger);
+    const conversation = await resolveConversationKeyForContext(
+      context,
+      logger as unknown as { info: (log: string, metadata?: Record<string, unknown>) => unknown }
+    );
     if (conversation) {
       conversationKey = conversation.key;
       conversationContext = await buildConversationContext({
@@ -127,33 +132,39 @@ export async function codexAgent(context: Context): Promise<void> {
         shouldUseSelector: false,
       });
     }
-    agentMemory = await getAgentMemorySnippet({ owner, repo, scopeKey: conversationKey || undefined, logger });
+    agentMemory = await getAgentMemorySnippet({
+      owner,
+      repo,
+      scopeKey: conversationKey || undefined,
+      logger: logger as unknown as { info: (log: string, metadata?: Record<string, unknown>) => unknown },
+    });
   } catch (error) {
     logger.info("[codexAgent] Conversation context build failed (non-fatal)", { error: String(error) });
   }
 
   try {
-    const shouldDispatch = String(process.env.UOS_AGENT_DISPATCH ?? env.UOS_AGENT_DISPATCH ?? "1").trim() !== "0";
+    const shouldDispatch = String(env.UOS_AGENT_DISPATCH ?? "1").trim() !== "0";
     if (!shouldDispatch) {
-      logPayloadIfEnabled({ logger, payload, task, inputs: {} });
+      logPayloadIfEnabled({ logger: logger as unknown as { info: (log: string, metadata?: Record<string, unknown>) => unknown }, payload, task, inputs: {} });
       logger.info("[agent] Dispatch disabled via UOS_AGENT_DISPATCH=0.");
       return;
     }
     const { inputs } = await dispatchAgentWorkflow({
       context,
       task,
-      logger,
+      logger: logger as unknown as { info: (log: string, metadata?: Record<string, unknown>) => unknown },
       settingsOverrides: {
         ...(agentMemory ? { agentMemory } : {}),
         ...(conversationContext ? { conversationContext } : {}),
         ...(conversationKey ? { conversationKey } : {}),
       },
     });
-    logPayloadIfEnabled({ logger, payload, task, inputs });
-    await maybeWriteRuntimeLogs({ task, inputs, payload, logger });
+    logPayloadIfEnabled({ logger: logger as unknown as { info: (log: string, metadata?: Record<string, unknown>) => unknown }, payload, task, inputs });
+    await maybeWriteRuntimeLogs({ task, inputs, payload, logger: logger as unknown as { info: (log: string, metadata?: Record<string, unknown>) => unknown } });
     logger.ok("Agent workflow dispatch complete.");
   } catch (error) {
-    logger.error("Agent dispatch error", formatDispatchError(error));
+    const details = formatDispatchError(error);
+    logger.error(details.message, details);
     throw error;
   }
 }
