@@ -24,7 +24,7 @@ on:
       dryRun:
         description: "Dry run (plan/matrix/consolidate without PR/comment/push)"
         type: boolean
-        default: "false"
+        default: false
 
 jobs:
   plan:
@@ -438,22 +438,22 @@ jobs:
           cat > "$RUNNER_TEMP/ubq-responses-forwarder.js" <<'NODE'
           const http = require("node:http");
           const { Readable } = require("node:stream");
-          
+
           const port = Number.parseInt(process.env.PORT || "4010", 10);
           const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
-          
+
           const tokenFile = String(process.env.UOS_TOKEN_FILE || "").trim();
           const initialAuthToken = String(process.env.AUTH_TOKEN || "").trim();
           const initialKernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
-          
+
           if (!owner || !repo) {
             console.error("Missing GH_OWNER/GH_REPO");
             process.exit(1);
           }
-          
+
           const readTokens = () => {
             if (tokenFile) {
               try {
@@ -468,12 +468,12 @@ jobs:
             }
             return { authToken: initialAuthToken, kernelToken: initialKernelToken };
           };
-          
+
           const toInputText = (text) => ({ type: "input_text", text });
           const toMessage = (text) => ({ type: "message", role: "user", content: [toInputText(text)] });
-          
+
           const normalizeInputText = (value) => (typeof value === "string" ? value : "");
-          
+
           const buildToolCallText = (item) => {
             const name = normalizeInputText(item.name);
             const args = normalizeInputText(item.arguments);
@@ -481,7 +481,7 @@ jobs:
             const parts = ["Tool call", name && `name=${name}`, callId && `id=${callId}`, args && `args=${args}`].filter(Boolean);
             return parts.join(" ") || "Tool call";
           };
-          
+
           const buildToolOutputText = (item) => {
             const callId = normalizeInputText(item.call_id);
             const output = normalizeInputText(item.output);
@@ -489,14 +489,14 @@ jobs:
             if (!output) return label;
             return `${label}:\n${output}`;
           };
-          
+
           const buildReasoningText = (item) => {
             const summary = normalizeInputText(item.summary);
             const content = normalizeInputText(item.content);
             const encrypted = normalizeInputText(item.encrypted_content);
             return summary || content || encrypted || "";
           };
-          
+
           const rewriteResponsesBody = (body) => {
             if (!body.length) return { body, rewrote: false };
             let parsed;
@@ -507,7 +507,7 @@ jobs:
             }
             if (!parsed || typeof parsed !== "object") return { body, rewrote: false };
             if (!Array.isArray(parsed.input)) return { body, rewrote: false };
-          
+
             const stats = {
               function_call: 0,
               function_call_output: 0,
@@ -515,7 +515,7 @@ jobs:
               input_text: 0,
               input_image: 0,
             };
-          
+
             const normalized = [];
             for (const item of parsed.input) {
               if (!item || typeof item !== "object") {
@@ -564,11 +564,11 @@ jobs:
               }
               throw new Error(`Unsupported responses input item type: ${type || "unknown"}`);
             }
-          
+
             parsed.input = normalized;
             return { body: Buffer.from(JSON.stringify(parsed)), rewrote: true, stats };
           };
-          
+
           const server = http.createServer(async (req, res) => {
             try {
               const url = new URL(req.url || "/", "http://127.0.0.1");
@@ -577,13 +577,13 @@ jobs:
                 res.end("ok");
                 return;
               }
-          
+
               const chunks = [];
               for await (const chunk of req) chunks.push(chunk);
               const body = Buffer.concat(chunks);
-          
+
               const upstreamUrl = new URL(url.pathname + url.search, baseUrl);
-          
+
               const logInputShape = () => {
                 if (url.pathname !== "/v1/responses") return;
                 if (!body.length) return;
@@ -621,7 +621,7 @@ jobs:
                 }
               };
               logInputShape();
-          
+
               let bodyForUpstream = body;
               if (url.pathname === "/v1/responses") {
                 try {
@@ -637,7 +637,7 @@ jobs:
                   return;
                 }
               }
-          
+
               const { authToken, kernelToken } = readTokens();
               if (!authToken) {
                 res.statusCode = 401;
@@ -651,7 +651,7 @@ jobs:
                 res.end("Missing kernel token");
                 return;
               }
-          
+
               const headers = {
                 Authorization: `Bearer ${authToken}`,
                 "Content-Type": req.headers["content-type"] || "application/json",
@@ -660,27 +660,27 @@ jobs:
               };
               if (installationId) headers["X-GitHub-Installation-Id"] = installationId;
               if (kernelToken) headers["X-Ubiquity-Kernel-Token"] = kernelToken;
-          
+
               const upstream = await fetch(upstreamUrl, {
                 method: req.method || "POST",
                 headers,
                 body: bodyForUpstream.length ? bodyForUpstream : undefined,
               });
-          
+
               res.statusCode = upstream.status;
-          
+
               const passthroughHeaders = ["content-type", "cache-control", "x-request-id", "x-ubq-upstream"];
               for (const key of passthroughHeaders) {
                 const value = upstream.headers.get(key);
                 if (value) res.setHeader(key, value);
               }
-          
+
               if (!upstream.body) {
                 const text = await upstream.text().catch(() => "");
                 res.end(text);
                 return;
               }
-          
+
               Readable.fromWeb(upstream.body).pipe(res);
             } catch (error) {
               res.statusCode = 502;
@@ -688,11 +688,11 @@ jobs:
               res.end(String(error?.message || error || "upstream error"));
             }
           });
-          
+
           server.listen(port, "127.0.0.1", () => {
             process.stdout.write(`ubq-responses-forwarder listening on 127.0.0.1:${port}\n`);
           });
-          
+
           NODE
 
           node "$RUNNER_TEMP/ubq-responses-forwarder.js" > "$RUNNER_TEMP/ubq_responses_forwarder.log" 2>&1 &
@@ -1149,22 +1149,22 @@ jobs:
           cat > "$RUNNER_TEMP/ubq-responses-forwarder.js" <<'NODE'
           const http = require("node:http");
           const { Readable } = require("node:stream");
-          
+
           const port = Number.parseInt(process.env.PORT || "4010", 10);
           const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
-          
+
           const tokenFile = String(process.env.UOS_TOKEN_FILE || "").trim();
           const initialAuthToken = String(process.env.AUTH_TOKEN || "").trim();
           const initialKernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
-          
+
           if (!owner || !repo) {
             console.error("Missing GH_OWNER/GH_REPO");
             process.exit(1);
           }
-          
+
           const readTokens = () => {
             if (tokenFile) {
               try {
@@ -1179,12 +1179,12 @@ jobs:
             }
             return { authToken: initialAuthToken, kernelToken: initialKernelToken };
           };
-          
+
           const toInputText = (text) => ({ type: "input_text", text });
           const toMessage = (text) => ({ type: "message", role: "user", content: [toInputText(text)] });
-          
+
           const normalizeInputText = (value) => (typeof value === "string" ? value : "");
-          
+
           const buildToolCallText = (item) => {
             const name = normalizeInputText(item.name);
             const args = normalizeInputText(item.arguments);
@@ -1192,7 +1192,7 @@ jobs:
             const parts = ["Tool call", name && `name=${name}`, callId && `id=${callId}`, args && `args=${args}`].filter(Boolean);
             return parts.join(" ") || "Tool call";
           };
-          
+
           const buildToolOutputText = (item) => {
             const callId = normalizeInputText(item.call_id);
             const output = normalizeInputText(item.output);
@@ -1200,14 +1200,14 @@ jobs:
             if (!output) return label;
             return `${label}:\n${output}`;
           };
-          
+
           const buildReasoningText = (item) => {
             const summary = normalizeInputText(item.summary);
             const content = normalizeInputText(item.content);
             const encrypted = normalizeInputText(item.encrypted_content);
             return summary || content || encrypted || "";
           };
-          
+
           const rewriteResponsesBody = (body) => {
             if (!body.length) return { body, rewrote: false };
             let parsed;
@@ -1218,7 +1218,7 @@ jobs:
             }
             if (!parsed || typeof parsed !== "object") return { body, rewrote: false };
             if (!Array.isArray(parsed.input)) return { body, rewrote: false };
-          
+
             const stats = {
               function_call: 0,
               function_call_output: 0,
@@ -1226,7 +1226,7 @@ jobs:
               input_text: 0,
               input_image: 0,
             };
-          
+
             const normalized = [];
             for (const item of parsed.input) {
               if (!item || typeof item !== "object") {
@@ -1275,11 +1275,11 @@ jobs:
               }
               throw new Error(`Unsupported responses input item type: ${type || "unknown"}`);
             }
-          
+
             parsed.input = normalized;
             return { body: Buffer.from(JSON.stringify(parsed)), rewrote: true, stats };
           };
-          
+
           const server = http.createServer(async (req, res) => {
             try {
               const url = new URL(req.url || "/", "http://127.0.0.1");
@@ -1288,13 +1288,13 @@ jobs:
                 res.end("ok");
                 return;
               }
-          
+
               const chunks = [];
               for await (const chunk of req) chunks.push(chunk);
               const body = Buffer.concat(chunks);
-          
+
               const upstreamUrl = new URL(url.pathname + url.search, baseUrl);
-          
+
               const logInputShape = () => {
                 if (url.pathname !== "/v1/responses") return;
                 if (!body.length) return;
@@ -1332,7 +1332,7 @@ jobs:
                 }
               };
               logInputShape();
-          
+
               let bodyForUpstream = body;
               if (url.pathname === "/v1/responses") {
                 try {
@@ -1348,7 +1348,7 @@ jobs:
                   return;
                 }
               }
-          
+
               const { authToken, kernelToken } = readTokens();
               if (!authToken) {
                 res.statusCode = 401;
@@ -1362,7 +1362,7 @@ jobs:
                 res.end("Missing kernel token");
                 return;
               }
-          
+
               const headers = {
                 Authorization: `Bearer ${authToken}`,
                 "Content-Type": req.headers["content-type"] || "application/json",
@@ -1371,27 +1371,27 @@ jobs:
               };
               if (installationId) headers["X-GitHub-Installation-Id"] = installationId;
               if (kernelToken) headers["X-Ubiquity-Kernel-Token"] = kernelToken;
-          
+
               const upstream = await fetch(upstreamUrl, {
                 method: req.method || "POST",
                 headers,
                 body: bodyForUpstream.length ? bodyForUpstream : undefined,
               });
-          
+
               res.statusCode = upstream.status;
-          
+
               const passthroughHeaders = ["content-type", "cache-control", "x-request-id", "x-ubq-upstream"];
               for (const key of passthroughHeaders) {
                 const value = upstream.headers.get(key);
                 if (value) res.setHeader(key, value);
               }
-          
+
               if (!upstream.body) {
                 const text = await upstream.text().catch(() => "");
                 res.end(text);
                 return;
               }
-          
+
               Readable.fromWeb(upstream.body).pipe(res);
             } catch (error) {
               res.statusCode = 502;
@@ -1399,11 +1399,11 @@ jobs:
               res.end(String(error?.message || error || "upstream error"));
             }
           });
-          
+
           server.listen(port, "127.0.0.1", () => {
             process.stdout.write(`ubq-responses-forwarder listening on 127.0.0.1:${port}\n`);
           });
-          
+
           NODE
 
           node "$RUNNER_TEMP/ubq-responses-forwarder.js" > "$RUNNER_TEMP/ubq_responses_forwarder.log" 2>&1 &
@@ -2020,22 +2020,22 @@ jobs:
           cat > "$RUNNER_TEMP/ubq-responses-forwarder.js" <<'NODE'
           const http = require("node:http");
           const { Readable } = require("node:stream");
-          
+
           const port = Number.parseInt(process.env.PORT || "4010", 10);
           const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
-          
+
           const tokenFile = String(process.env.UOS_TOKEN_FILE || "").trim();
           const initialAuthToken = String(process.env.AUTH_TOKEN || "").trim();
           const initialKernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
-          
+
           if (!owner || !repo) {
             console.error("Missing GH_OWNER/GH_REPO");
             process.exit(1);
           }
-          
+
           const readTokens = () => {
             if (tokenFile) {
               try {
@@ -2050,12 +2050,12 @@ jobs:
             }
             return { authToken: initialAuthToken, kernelToken: initialKernelToken };
           };
-          
+
           const toInputText = (text) => ({ type: "input_text", text });
           const toMessage = (text) => ({ type: "message", role: "user", content: [toInputText(text)] });
-          
+
           const normalizeInputText = (value) => (typeof value === "string" ? value : "");
-          
+
           const buildToolCallText = (item) => {
             const name = normalizeInputText(item.name);
             const args = normalizeInputText(item.arguments);
@@ -2063,7 +2063,7 @@ jobs:
             const parts = ["Tool call", name && `name=${name}`, callId && `id=${callId}`, args && `args=${args}`].filter(Boolean);
             return parts.join(" ") || "Tool call";
           };
-          
+
           const buildToolOutputText = (item) => {
             const callId = normalizeInputText(item.call_id);
             const output = normalizeInputText(item.output);
@@ -2071,14 +2071,14 @@ jobs:
             if (!output) return label;
             return `${label}:\n${output}`;
           };
-          
+
           const buildReasoningText = (item) => {
             const summary = normalizeInputText(item.summary);
             const content = normalizeInputText(item.content);
             const encrypted = normalizeInputText(item.encrypted_content);
             return summary || content || encrypted || "";
           };
-          
+
           const rewriteResponsesBody = (body) => {
             if (!body.length) return { body, rewrote: false };
             let parsed;
@@ -2089,7 +2089,7 @@ jobs:
             }
             if (!parsed || typeof parsed !== "object") return { body, rewrote: false };
             if (!Array.isArray(parsed.input)) return { body, rewrote: false };
-          
+
             const stats = {
               function_call: 0,
               function_call_output: 0,
@@ -2097,7 +2097,7 @@ jobs:
               input_text: 0,
               input_image: 0,
             };
-          
+
             const normalized = [];
             for (const item of parsed.input) {
               if (!item || typeof item !== "object") {
@@ -2146,11 +2146,11 @@ jobs:
               }
               throw new Error(`Unsupported responses input item type: ${type || "unknown"}`);
             }
-          
+
             parsed.input = normalized;
             return { body: Buffer.from(JSON.stringify(parsed)), rewrote: true, stats };
           };
-          
+
           const server = http.createServer(async (req, res) => {
             try {
               const url = new URL(req.url || "/", "http://127.0.0.1");
@@ -2159,13 +2159,13 @@ jobs:
                 res.end("ok");
                 return;
               }
-          
+
               const chunks = [];
               for await (const chunk of req) chunks.push(chunk);
               const body = Buffer.concat(chunks);
-          
+
               const upstreamUrl = new URL(url.pathname + url.search, baseUrl);
-          
+
               const logInputShape = () => {
                 if (url.pathname !== "/v1/responses") return;
                 if (!body.length) return;
@@ -2203,7 +2203,7 @@ jobs:
                 }
               };
               logInputShape();
-          
+
               let bodyForUpstream = body;
               if (url.pathname === "/v1/responses") {
                 try {
@@ -2219,7 +2219,7 @@ jobs:
                   return;
                 }
               }
-          
+
               const { authToken, kernelToken } = readTokens();
               if (!authToken) {
                 res.statusCode = 401;
@@ -2233,7 +2233,7 @@ jobs:
                 res.end("Missing kernel token");
                 return;
               }
-          
+
               const headers = {
                 Authorization: `Bearer ${authToken}`,
                 "Content-Type": req.headers["content-type"] || "application/json",
@@ -2242,27 +2242,27 @@ jobs:
               };
               if (installationId) headers["X-GitHub-Installation-Id"] = installationId;
               if (kernelToken) headers["X-Ubiquity-Kernel-Token"] = kernelToken;
-          
+
               const upstream = await fetch(upstreamUrl, {
                 method: req.method || "POST",
                 headers,
                 body: bodyForUpstream.length ? bodyForUpstream : undefined,
               });
-          
+
               res.statusCode = upstream.status;
-          
+
               const passthroughHeaders = ["content-type", "cache-control", "x-request-id", "x-ubq-upstream"];
               for (const key of passthroughHeaders) {
                 const value = upstream.headers.get(key);
                 if (value) res.setHeader(key, value);
               }
-          
+
               if (!upstream.body) {
                 const text = await upstream.text().catch(() => "");
                 res.end(text);
                 return;
               }
-          
+
               Readable.fromWeb(upstream.body).pipe(res);
             } catch (error) {
               res.statusCode = 502;
@@ -2270,11 +2270,11 @@ jobs:
               res.end(String(error?.message || error || "upstream error"));
             }
           });
-          
+
           server.listen(port, "127.0.0.1", () => {
             process.stdout.write(`ubq-responses-forwarder listening on 127.0.0.1:${port}\n`);
           });
-          
+
           NODE
 
           node "$RUNNER_TEMP/ubq-responses-forwarder.js" > "$RUNNER_TEMP/ubq_responses_forwarder.log" 2>&1 &
@@ -3235,22 +3235,22 @@ jobs:
           cat > "$RUNNER_TEMP/ubq-responses-forwarder.js" <<'NODE'
           const http = require("node:http");
           const { Readable } = require("node:stream");
-          
+
           const port = Number.parseInt(process.env.PORT || "4010", 10);
           const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
-          
+
           const tokenFile = String(process.env.UOS_TOKEN_FILE || "").trim();
           const initialAuthToken = String(process.env.AUTH_TOKEN || "").trim();
           const initialKernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
-          
+
           if (!owner || !repo) {
             console.error("Missing GH_OWNER/GH_REPO");
             process.exit(1);
           }
-          
+
           const readTokens = () => {
             if (tokenFile) {
               try {
@@ -3265,12 +3265,12 @@ jobs:
             }
             return { authToken: initialAuthToken, kernelToken: initialKernelToken };
           };
-          
+
           const toInputText = (text) => ({ type: "input_text", text });
           const toMessage = (text) => ({ type: "message", role: "user", content: [toInputText(text)] });
-          
+
           const normalizeInputText = (value) => (typeof value === "string" ? value : "");
-          
+
           const buildToolCallText = (item) => {
             const name = normalizeInputText(item.name);
             const args = normalizeInputText(item.arguments);
@@ -3278,7 +3278,7 @@ jobs:
             const parts = ["Tool call", name && `name=${name}`, callId && `id=${callId}`, args && `args=${args}`].filter(Boolean);
             return parts.join(" ") || "Tool call";
           };
-          
+
           const buildToolOutputText = (item) => {
             const callId = normalizeInputText(item.call_id);
             const output = normalizeInputText(item.output);
@@ -3286,14 +3286,14 @@ jobs:
             if (!output) return label;
             return `${label}:\n${output}`;
           };
-          
+
           const buildReasoningText = (item) => {
             const summary = normalizeInputText(item.summary);
             const content = normalizeInputText(item.content);
             const encrypted = normalizeInputText(item.encrypted_content);
             return summary || content || encrypted || "";
           };
-          
+
           const rewriteResponsesBody = (body) => {
             if (!body.length) return { body, rewrote: false };
             let parsed;
@@ -3304,7 +3304,7 @@ jobs:
             }
             if (!parsed || typeof parsed !== "object") return { body, rewrote: false };
             if (!Array.isArray(parsed.input)) return { body, rewrote: false };
-          
+
             const stats = {
               function_call: 0,
               function_call_output: 0,
@@ -3312,7 +3312,7 @@ jobs:
               input_text: 0,
               input_image: 0,
             };
-          
+
             const normalized = [];
             for (const item of parsed.input) {
               if (!item || typeof item !== "object") {
@@ -3361,11 +3361,11 @@ jobs:
               }
               throw new Error(`Unsupported responses input item type: ${type || "unknown"}`);
             }
-          
+
             parsed.input = normalized;
             return { body: Buffer.from(JSON.stringify(parsed)), rewrote: true, stats };
           };
-          
+
           const server = http.createServer(async (req, res) => {
             try {
               const url = new URL(req.url || "/", "http://127.0.0.1");
@@ -3374,13 +3374,13 @@ jobs:
                 res.end("ok");
                 return;
               }
-          
+
               const chunks = [];
               for await (const chunk of req) chunks.push(chunk);
               const body = Buffer.concat(chunks);
-          
+
               const upstreamUrl = new URL(url.pathname + url.search, baseUrl);
-          
+
               const logInputShape = () => {
                 if (url.pathname !== "/v1/responses") return;
                 if (!body.length) return;
@@ -3418,7 +3418,7 @@ jobs:
                 }
               };
               logInputShape();
-          
+
               let bodyForUpstream = body;
               if (url.pathname === "/v1/responses") {
                 try {
@@ -3434,7 +3434,7 @@ jobs:
                   return;
                 }
               }
-          
+
               const { authToken, kernelToken } = readTokens();
               if (!authToken) {
                 res.statusCode = 401;
@@ -3448,7 +3448,7 @@ jobs:
                 res.end("Missing kernel token");
                 return;
               }
-          
+
               const headers = {
                 Authorization: `Bearer ${authToken}`,
                 "Content-Type": req.headers["content-type"] || "application/json",
@@ -3457,27 +3457,27 @@ jobs:
               };
               if (installationId) headers["X-GitHub-Installation-Id"] = installationId;
               if (kernelToken) headers["X-Ubiquity-Kernel-Token"] = kernelToken;
-          
+
               const upstream = await fetch(upstreamUrl, {
                 method: req.method || "POST",
                 headers,
                 body: bodyForUpstream.length ? bodyForUpstream : undefined,
               });
-          
+
               res.statusCode = upstream.status;
-          
+
               const passthroughHeaders = ["content-type", "cache-control", "x-request-id", "x-ubq-upstream"];
               for (const key of passthroughHeaders) {
                 const value = upstream.headers.get(key);
                 if (value) res.setHeader(key, value);
               }
-          
+
               if (!upstream.body) {
                 const text = await upstream.text().catch(() => "");
                 res.end(text);
                 return;
               }
-          
+
               Readable.fromWeb(upstream.body).pipe(res);
             } catch (error) {
               res.statusCode = 502;
@@ -3485,11 +3485,11 @@ jobs:
               res.end(String(error?.message || error || "upstream error"));
             }
           });
-          
+
           server.listen(port, "127.0.0.1", () => {
             process.stdout.write(`ubq-responses-forwarder listening on 127.0.0.1:${port}\n`);
           });
-          
+
           NODE
 
           node "$RUNNER_TEMP/ubq-responses-forwarder.js" > "$RUNNER_TEMP/ubq_responses_forwarder.log" 2>&1 &

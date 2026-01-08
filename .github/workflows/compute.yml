@@ -59,14 +59,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
         with:
-          node-version: "24"
-      - run: node dist/index.js
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      - run: bun src/index.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: runtime-logs-${{ github.run_id }}
-          path: |
-            runtime-logs/**
-          if-no-files-found: ignore
+          path: runtime-logs/**
