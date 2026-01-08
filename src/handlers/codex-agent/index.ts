@@ -58,7 +58,12 @@ export async function codexAgent(context: Context): Promise<void> {
   }
 
   const isSelf = Boolean(sender && agentOwner && String(sender).toLowerCase() === String(agentOwner).toLowerCase());
-  const accessLevel = isSelf ? "full" : "read-only";
+  const accessLevel = isSelf ? "full" : "disabled";
+
+  if (accessLevel === "disabled") {
+    logger.info("Skipping execution: agent is in disabled mode for non-owners.", { sender, repo, issueNumber, owner, agentOwner, accessLevel });
+    return;
+  }
 
   logger.info("Executing codexAgent", { sender, repo, issueNumber, owner, agentOwner, accessLevel });
 
