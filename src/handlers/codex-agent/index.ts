@@ -74,7 +74,7 @@ export async function codexAgent(context: Context): Promise<void> {
 }
 
 function isWhitelisted(owner: string): boolean {
-  const whitelistedOrgs = ["placeholder-org"];
+  const whitelistedOrgs = ["0x4007", "0x4007-ubiquity-os"];
   return whitelistedOrgs.includes(owner.toLowerCase());
 }
 
